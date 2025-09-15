@@ -1,0 +1,262 @@
+# CAN: R代码开始 (统一调整字体大小)
+
+# 1. 加载必要的库
+library(readxl)
+library(ggplot2)
+library(dplyr)
+
+# --- 新增：定义全局基础字体大小 ---
+# 修改这个值可以统一调整图表中的大部分字体大小
+global_base_font_size <- 15 # 你可以改成 10, 14, 16 等等
+
+cat("CAN: 全局基础字体大小设置为:", global_base_font_size, "\n")
+
+# 2. 定义Excel文件路径和读取数据
+file_path <- "FINALTAR.xlsx"
+
+# 尝试读取Excel文件
+tryCatch({
+  cat("CAN: 正在尝试读取Excel文件:", file_path, "\n")
+  data_raw <- read_excel(file_path)
+  cat("CAN: Excel文件读取成功。\n")
+}, error = function(e) {
+  stop("CAN: 错误！无法读取Excel文件 '", file_path, "'。\n请检查：\n1. 文件名和路径是否正确。\n2. 文件是否未损坏。\n3. R是否有权限访问该文件。\n错误详情: ", e$message)
+})
+
+# 3. 数据预处理
+data_processed <- data_raw %>%
+  mutate(
+    method = as.factor(method),
+    n_initial = as.numeric(n_initial),
+    mean_RMSE = as.numeric(mean_RMSE),
+    Q1_RMSE = as.numeric(Q1_RMSE),
+    Q3_RMSE = as.numeric(Q3_RMSE)
+  ) %>%
+  # 确保数据按 n_initial 排序，这对于 geom_ribbon 和 geom_line 很重要
+  arrange(method, n_initial)
+
+cat("CAN: 数据预处理完成。以下是数据的前几行：\n")
+print(head(data_processed))
+cat("\nCAN: 数据中的方法类别：\n")
+print(levels(data_processed$method))
+
+# 4. 定义颜色和线型方案 (推荐方案)
+unique_methods <- levels(data_processed$method)
+num_methods <- length(unique_methods)
+
+recommended_colors <- c(
+  "D_opt"   = "#FF7F00", # Orange
+  "G_opt"   = "#377EB8", # Blue
+  "CVT"    = "#4DAF4A", # Green
+  "LHS"     = "#984EA3", # Purple
+  "PM"      = "#E41A1C"  # Red
+)
+
+recommended_linetypes <- c(
+  "D_opt"   = "twodash",  # 双划线
+  "G_opt"   = "dashed",   # 虚线
+  "CVT"    = "longdash",   # 点线
+  "LHS"     = "dotdash",  # 点划线
+  "PM"      = "solid"  # 实线
+)
+
+active_colors <- recommended_colors[names(recommended_colors) %in% unique_methods]
+active_linetypes <- recommended_linetypes[names(recommended_linetypes) %in% unique_methods]
+
+missing_methods_color <- unique_methods[!unique_methods %in% names(active_colors)]
+if(length(missing_methods_color) > 0) {
+  default_cols <- scales::hue_pal()(length(missing_methods_color))
+  names(default_cols) <- missing_methods_color
+  active_colors <- c(active_colors, default_cols)
+}
+
+missing_methods_linetype <- unique_methods[!unique_methods %in% names(active_linetypes)]
+if(length(missing_methods_linetype) > 0) {
+  default_ltys <- rep_len(c("solid", "dashed", "dotted", "dotdash", "longdash", "twodash"), length(missing_methods_linetype))
+  names(default_ltys) <- missing_methods_linetype
+  active_linetypes <- c(active_linetypes, default_ltys)
+}
+
+cat("\nCAN: 将使用以下颜色方案：\n")
+print(active_colors)
+cat("\nCAN: 将使用以下线型方案：\n")
+print(active_linetypes)
+
+# 5. 创建绘图对象
+rmse_plot <- ggplot(data_processed, aes(x = n_initial, group = method)) +
+  geom_ribbon(aes(ymin = Q1_RMSE, ymax = Q3_RMSE, fill = method), alpha = 0.25) +
+  geom_line(aes(y = mean_RMSE, color = method, linetype = method), size = 1.5) +
+  scale_color_manual(values = active_colors, name = "Method") +
+  scale_fill_manual(values = active_colors, name = "Method") +
+  scale_linetype_manual(values = active_linetypes, name = "Method") +
+  labs(
+    x = "Number",
+    y = "RMSE" # Y轴标签保持双行
+  ) +
+  # --- 使用全局基础字体大小变量 ---
+  theme_bw(base_size = global_base_font_size) +
+  # --- 在这里进行主题修改 ---
+  theme(
+    plot.title = element_blank(),
+    legend.position = c(0.95, 0.95),
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = "white", colour = "grey80", linewidth = 0.5),
+    legend.title = element_text(face = "bold", size = rel(1.2)), # 增大图例标题
+    legend.text = element_text(size = rel(1.1)), # 增大图例文字
+    legend.key.width = unit(2.5, "lines"), # 调整图例线条长度以匹配图片尺寸
+    
+    # --- 【本次修改】: 移除所有网格线 ---
+    panel.grid.major = element_blank(), # 移除主要网格线
+    panel.grid.minor = element_blank(), # 移除次要网格线 (保险起见)
+    
+    axis.title.y = element_text(
+      face = "bold",
+      angle = 0, # 横排
+      vjust = 0.5,
+      lineheight = 1.1 
+    ),
+    axis.title.x = element_text(face = "bold"),
+    strip.background = element_blank(),
+    
+    # --- 保持只显示X和Y轴的设置 ---
+    panel.border = element_blank(),
+    axis.line = element_line(colour = "black", linewidth = 0.5)
+  )
+
+print(rmse_plot)
+
+# 6. 保存图像为PDF格式
+ggsave("RMSE_plot_FINALTAR.pdf", plot = rmse_plot, width = 6, height = 5, device = "pdf")
+cat("\nCAN: 图像已保存为 'RMSE_plot_FINALTAR.pdf'\n")
+
+# CAN: R代码开始 (统一调整字体大小)
+
+# 1. 加载必要的库
+library(readxl)
+library(ggplot2)
+library(dplyr)
+
+# --- 新增：定义全局基础字体大小 ---
+# 修改这个值可以统一调整图表中的大部分字体大小
+global_base_font_size <- 15 # 你可以改成 10, 14, 16 等等
+
+cat("CAN: 全局基础字体大小设置为:", global_base_font_size, "\n")
+
+# 2. 定义Excel文件路径和读取数据
+file_path <- "FINALALL.xlsx"
+
+# 尝试读取Excel文件
+tryCatch({
+  cat("CAN: 正在尝试读取Excel文件:", file_path, "\n")
+  data_raw <- read_excel(file_path)
+  cat("CAN: Excel文件读取成功。\n")
+}, error = function(e) {
+  stop("CAN: 错误！无法读取Excel文件 '", file_path, "'。\n请检查：\n1. 文件名和路径是否正确。\n2. 文件是否未损坏。\n3. R是否有权限访问该文件。\n错误详情: ", e$message)
+})
+
+# 3. 数据预处理
+data_processed <- data_raw %>%
+  mutate(
+    method = as.factor(method),
+    n_initial = as.numeric(n_initial),
+    mean_RMSE = as.numeric(mean_RMSE),
+    Q1_RMSE = as.numeric(Q1_RMSE),
+    Q3_RMSE = as.numeric(Q3_RMSE)
+  ) %>%
+  # 确保数据按 n_initial 排序，这对于 geom_ribbon 和 geom_line 很重要
+  arrange(method, n_initial)
+
+cat("CAN: 数据预处理完成。以下是数据的前几行：\n")
+print(head(data_processed))
+cat("\nCAN: 数据中的方法类别：\n")
+print(levels(data_processed$method))
+
+# 4. 定义颜色和线型方案 (推荐方案)
+unique_methods <- levels(data_processed$method)
+num_methods <- length(unique_methods)
+
+recommended_colors <- c(
+  "D_opt"   = "#FF7F00", # Orange
+  "G_opt"   = "#377EB8", # Blue
+  "CVT"    = "#4DAF4A", # Green
+  "LHS"     = "#984EA3", # Purple
+  "PM"      = "#E41A1C"  # Red
+)
+
+recommended_linetypes <- c(
+  "D_opt"   = "twodash",  # 双划线
+  "G_opt"   = "dashed",   # 虚线
+  "CVT"    = "longdash",   # 点线
+  "LHS"     = "dotdash",  # 点划线
+  "PM"      = "solid"  # 实线
+)
+
+active_colors <- recommended_colors[names(recommended_colors) %in% unique_methods]
+active_linetypes <- recommended_linetypes[names(recommended_linetypes) %in% unique_methods]
+
+missing_methods_color <- unique_methods[!unique_methods %in% names(active_colors)]
+if(length(missing_methods_color) > 0) {
+  default_cols <- scales::hue_pal()(length(missing_methods_color))
+  names(default_cols) <- missing_methods_color
+  active_colors <- c(active_colors, default_cols)
+}
+
+missing_methods_linetype <- unique_methods[!unique_methods %in% names(active_linetypes)]
+if(length(missing_methods_linetype) > 0) {
+  default_ltys <- rep_len(c("solid", "dashed", "dotted", "dotdash", "longdash", "twodash"), length(missing_methods_linetype))
+  names(default_ltys) <- missing_methods_linetype
+  active_linetypes <- c(active_linetypes, default_ltys)
+}
+
+cat("\nCAN: 将使用以下颜色方案：\n")
+print(active_colors)
+cat("\nCAN: 将使用以下线型方案：\n")
+print(active_linetypes)
+
+# 5. 创建绘图对象
+rmse_plot <- ggplot(data_processed, aes(x = n_initial, group = method)) +
+  geom_ribbon(aes(ymin = Q1_RMSE, ymax = Q3_RMSE, fill = method), alpha = 0.25) +
+  geom_line(aes(y = mean_RMSE, color = method, linetype = method), size = 1.5) +
+  scale_color_manual(values = active_colors, name = "Method") +
+  scale_fill_manual(values = active_colors, name = "Method") +
+  scale_linetype_manual(values = active_linetypes, name = "Method") +
+  labs(
+    x = "Number",
+    y = "RMSE" # Y轴标签保持双行
+  ) +
+  # --- 使用全局基础字体大小变量 ---
+  theme_bw(base_size = global_base_font_size) +
+  # --- 在这里进行主题修改 ---
+  theme(
+    plot.title = element_blank(),
+    legend.position = c(0.95, 0.95),
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = "white", colour = "grey80", linewidth = 0.5),
+    legend.title = element_text(face = "bold", size = rel(1.2)), # 增大图例标题
+    legend.text = element_text(size = rel(1.1)), # 增大图例文字
+    legend.key.width = unit(2.5, "lines"), # 调整图例线条长度以匹配图片尺寸
+    
+    # --- 【本次修改】: 移除所有网格线 ---
+    panel.grid.major = element_blank(), # 移除主要网格线
+    panel.grid.minor = element_blank(), # 移除次要网格线 (保险起见)
+    
+    axis.title.y = element_text(
+      face = "bold",
+      angle = 0, # 横排
+      vjust = 0.5,
+      lineheight = 1.1 
+    ),
+    axis.title.x = element_text(face = "bold"),
+    strip.background = element_blank(),
+    
+    # --- 保持只显示X和Y轴的设置 ---
+    panel.border = element_blank(),
+    axis.line = element_line(colour = "black", linewidth = 0.5)
+  )
+
+print(rmse_plot)
+
+# 6. 保存图像为PDF格式
+ggsave("RMSE_plot_FINALALL.pdf", plot = rmse_plot, width = 6, height = 5, device = "pdf")
+cat("\nCAN: 图像已保存为 'RMSE_plot_FINALALL.pdf'\n")
+

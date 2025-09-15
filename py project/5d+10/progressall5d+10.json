@@ -1,0 +1,1 @@
+{"n_initial": 90, "repeat": 1, "method": "LHS", "methods_to_run": ["PM", "LHS", "G_opt", "D_opt", "K_means"]}

@@ -1,0 +1,1208 @@
+% interactcadsample_cn.tex
+% Chinese version based on interactcadsample.tex
+
+\documentclass[]{interact}
+
+\usepackage[UTF8,scheme=plain,fontset=none]{ctex}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\usepackage{epstopdf}% To incorporate .eps illustrations using PDFLaTeX, etc.
+\usepackage{subfigure}% Support for small, `sub' figures and tables
+%\usepackage[nolists,tablesfirst]{endfloat}% To `separate' figures and tables from text if required
+\usepackage{enumitem}
+\usepackage{natbib}% Citation support using natbib.sty
+\usepackage{amsmath}
+\usepackage{multirow} 
+\usepackage{algorithm}      
+\usepackage{algorithmicx}   
+\usepackage{algpseudocode}  
+\usepackage{setspace}
+\onehalfspacing  
+\renewcommand{\abstractname}{摘\quad 要}
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\renewcommand{\appendixname}{附录}
+\renewcommand{\refname}{参考文献}
+\renewcommand{\contentsname}{目\quad 录}
+\renewcommand{\today}{\number\year 年\number\month 月\number\day 日}
+\renewcommand\keywordsname{关键词}
+\makeatletter
+\gdef\@received{编译日期：\today}
+\def\@maketitle{\thispagestyle{plain}
+  \clearpage
+  \null
+  \bgroup
+    \parindent0pt
+    \vspace*{36pt}
+    {\articletypefont{\@articletype}\par}%
+    \vskip13pt
+    {\titlefont{\@title}\par}%
+    \vskip13pt
+    {\authorfont\@author\par}%
+    \ifsuppldata\else
+    \vskip17pt
+    {\receivedfont{\bfseries 文章历史\\}\@received\par}%
+    \fi
+    \vskip13pt
+  \egroup}
+\makeatother
+\bibpunct[, ]{(}{)}{;}{a}{}{,}% Citation support using natbib.sty
+\renewcommand\bibfont{\fontsize{10}{12}\selectfont}% Bibliography support using natbib.sty
+
+\theoremstyle{plain}% Theorem-like structures provided by amsthm.sty
+\newtheorem{theorem}{定理}[section]
+\newtheorem{lemma}[theorem]{引理}
+\newtheorem{corollary}[theorem]{推论}
+\newtheorem{proposition}[theorem]{命题}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{定义}
+\newtheorem{example}[theorem]{例}
+
+\theoremstyle{remark}
+\newtheorem{remark}{注}
+\newtheorem{notation}{记号}
+%\providecommand{\replace}[2]{#2} 
+\begin{document}
+
+\articletype{论文模板}
+
+\title{面向稳健参数设计中非平稳高斯过程建模的两阶段注意力引导主动学习}
+
+\author{
+	\name{冯泽彪\textsuperscript{a}\thanks{*通讯作者。邮箱：zbfeng@njupt.edu.cn}，杨旭\textsuperscript{a}，王建军\textsuperscript{b}，黄卫东\textsuperscript{a}}
+	\affil{\textsuperscript{a}南京邮电大学管理学院，南京 210003，中国；\textsuperscript{b}南京理工大学管理科学与工程系，南京 210094，中国}
+}
+
+\maketitle
+
+\begin{abstract}
+稳健参数设计是工业实践中持续质量改进的重要方法。然而，在样本有限的条件下对非平稳响应面进行建模仍然具有挑战性，因为预测精度不足可能导致最优参数设置估计出现乐观偏差。本文在非平稳高斯过程（NSGP）建模框架下，提出一种面向稳健参数设计的两阶段注意力引导主动学习方法。该方法将 softmax 加权质量损失函数与 maximin 距离准则相结合，在潜在最优子区域的局部精度与全局空间填充之间取得平衡。第一阶段依据候选设计点与潜在最优子区域的相关性进行排序，并选取高权重子集进入后续筛选；第二阶段在该子集中进一步引入空间多样性约束，以缓解样本聚集。随后，将选取的样本点加入训练集并更新 NSGP 模型。本文进一步采用遗传算法求解基于 NSGP 的稳健参数设计问题，从而确定最优参数设置。数值实验与工程案例表明，所提方法能够在数据稀缺场景下提高预测精度，并增强优化解的稳健性。
+\end{abstract}
+
+\begin{keywords}
+质量工程；稳健参数设计；非平稳高斯过程建模；主动学习；两阶段注意力引导采集
+\end{keywords}
+
+
+\section{引言}
+\subsection{研究动机}
+在现代制造系统中，产品质量直接关系到企业竞争力、客户忠诚度和运营成本控制，也与市场份额和顾客满意度提升密切相关 \citep{Wu2011, He2021, Liw2025}。系统化质量改进还能够降低缺陷、返工和保修成本 \citep{Wu2020}。作为质量工程的重要方法，稳健参数设计（RPD）通过确定设计参数与工艺参数组合，降低系统对噪声因素的敏感性，从而提高质量特性的稳定性和一致性 \citep{Bao2016, Ouyang2016, Ouyang2025}。RPD 已广泛应用于先进制造、工程系统和服务运营，为不确定条件下的性能优化提供了理论支撑 \citep{Chuang2017, An2020, Huang2022}。响应面方法（RSM）通过统计方式近似输入—输出关系，是实施 RPD 的重要工具 \citep{Fan2000, Ding2004, Peterson2009, Li2025}。然而，现代工程系统的质量特性日益呈现高维、强非线性和显著非平稳等特征。在这类条件下，传统响应面模型或代理模型难以在有限数据下获得足够的精度和泛化能力，从而影响最优解的有效性和质量改进效率。
+
+基于 Gaussian process（GP/Kriging）的代理建模因具有系统的不确定性量化能力和灵活的非线性函数逼近能力，已成为稳健优化中的核心技术之一 \citep{Williams2006, Ankenman2010, Santner2018, Liu2025}。主动学习提供了一种面向信息增益的实验设计范式，使有限数据条件下的数据高效 GP 建模和稳健优化成为可能 \citep{Wang2025, Feng2025}。不过，现有研究相当一部分仍建立在平稳性假设之上，并忽视对潜在最优区域附近子空间的定向探索，进而降低响应面建模效率并削弱优化解的稳健性。为弥补这一不足，本文在有限数据条件下提出一种面向 NSGP 建模和稳健参数设计的两阶段注意力引导主动学习框架。第一阶段采用 softmax 加权质量损失准则，优先提高潜在最优区域的预测精度；第二阶段采用 maximin 空间填充规则，抑制局部聚集并改善空间覆盖。最终，将注意力增强的 NSGP 嵌入稳健参数设计方案。
+
+\subsection{相关研究工作}
+近年来，已有大量文献研究基于 GP 建模的 RPD 方法 \citep{Jiang2021}。在应用与建模集成方面，\citet{Dellino2012} 将 Kriging、非线性规划和重采样策略结合，以缓解代理模型不确定性；\citet{Tan2012} 引入基于 Lugannani--Rice 鞍点近似的期望二次损失准则，提高优化可靠性。若干研究在 Bayesian 框架下推进多响应 GP 建模 \citep{Alshraideh2014, Kleijnen2014}；\citet{Li2016} 提出成对建模策略，\citet{Ding2024} 则发展了考虑协变量的 Gaussian process profile 模型，均旨在提高预测精度。\citet{Han2016}、\citet{Wang2019} 和 \citet{Wang2022} 分别通过闭式质量损失、IMSE 采样和输入位置误差分析处理输入不确定性。\citet{Feng2021} 提出用于异常值稳健优化的 Student-\emph{t} GP。\citet{Chen2022}、\citet{Barde2024} 和 \citet{Zhou2025} 分别利用 projection-pursuit additive Gaussian processes、稀疏变分 coregionalization 模型和 Dirichlet Gaussian processes 处理高维问题。尽管已有研究取得了进展，多数方法仍假设训练数据集固定，限制了设计点的自适应能力，也削弱了小样本条件下响应面模型的有效性。
+
+在数据稀缺场景下，主动学习通过优先选择信息量高的样本提升数据效率和稳健性。\citet{Chen2021} 将 D-optimality 与 maximin 空间填充准则结合，以提高 GP 模型精度。\citet{Han2021} 基于轮廓估计提出控制变量与噪声变量协同采样的双采集策略。\citet{Zhang2024} 在 AK-Gibbs 方法中采用 Gibbs 重要性采样，以更好估计高维问题中的小失效概率。然而，这些方法通常依赖平稳性假设，限制了其刻画工业过程常见非平稳特征的能力。针对这一问题，已有多种 NSGP 模型被提出。\citet{Gramacy2008} 提出基于树分区的 NSGP，并有效刻画火箭助推器设计中的非平稳响应；\citet{Konomi2014} 将 NSGP 扩展到多输出系统，用于复杂流体动力学建模；\citet{Rhode2020} 在 NSGP 框架下评估多种置信带构造方法。Liu (2021) 通过结合 global--local GP 集成与滑动窗口排序机制提高预测精度。在统一建模与优化方面，\citet{Davis2021} 提出 Bayesian composite GP 模型，通过非恒定方差结构解耦全局趋势和局部波动；\citet{Meng2022} 构建组合框架，在多峰响应面中平衡全局探索与局部开发。Deep Gaussian processes（DGPs）也被用于非平稳函数建模。\citet{Sauer2022} 将 DGPs 引入主动学习，以近似数据稀缺场景下的复杂仿真；\citet{Gnanasambandam2024} 将 DGPs 与随机插补结合，提高多类基准函数和金属增材制造应用中的效率。不过，多数现有研究在主动学习过程中忽略潜在最优区域的预测精度，可能导致对所得解稳健性的过度估计。
+
+注意力机制起源于深度学习中的自然语言处理，并已广泛应用于计算机视觉、时间序列预测、多任务优化以及科学计算代理建模 \citep{Yu2022}。其核心思想是对特征进行自适应加权，以突出与任务性能最相关的信息。在主动学习中，这一思想可以引导采样关注对响应或稳健性指标具有更大影响的区域，从而在有限数据下提高建模效率和预测精度。在 GP 建模中，注意力思想也被嵌入表示学习和推断过程。\cite{Li2022} 建立了 GP mixture 与注意力机制之间的联系，并提出适用于非欧式空间的变体；\cite{Xie2022} 提出基于 GP 的 channel attention 模块，以概率方式进行通道相关性建模；\cite{Zhong2024} 将 transformer 学习与 Gaussian attention 结合，用于提高木材表面缺陷分割效果，尤其适用于边界模糊和形态不规则的情形。尽管这些方法提高了模型精度，但通常采用单目标注意力机制，容易造成设计点局部聚集并降低采样策略的整体适应性。
+
+为解决上述问题，本文提出一种面向有限数据稳健优化的两阶段注意力引导主动学习 NSGP 建模框架。第一阶段采用 softmax 加权质量损失采集准则，将采样聚焦于潜在最优子区域，从而提高局部预测精度；第二阶段采用 maximin 空间填充准则，抑制局部聚集并增强全局覆盖。由此得到的注意力增强 NSGP 代理模型进一步嵌入稳健参数设计模型。本文主要贡献如下：
+\begin{enumerate}
+	\item 构建了一个面向小样本与非平稳响应的注意力引导主动学习 NSGP 优化框架，同时提高非平稳性刻画能力和优化质量。
+	\item 提出一种有原则的两阶段采集策略，将目标感知的质量损失评分与空间填充的 maximin 规则耦合，在潜在最优区域实现高效且保持多样性的采样。
+	\item 设计了基于质量损失的目标驱动主动学习流程，增强潜在最优区域的建模保真度和不确定性控制，从而获得更准确、更稳健的优化解。
+\end{enumerate}
+
+本文其余部分安排如下：第 2 节介绍非平稳 GP 建模方法；第 3 节给出注意力增强稳健优化框架，包括注意力加权方案、基于注意力的主动学习循环以及整体优化模型；第 4 节通过两个数值算例和两个工程案例验证所提方法，并讨论其适用性与优势；第 5 节总结全文并展望未来研究方向。
+
+\section{非平稳高斯过程建模}
+
+标准 GP 模型通常假设噪声同方差且核函数平稳。然而，在许多实际应用中，响应往往具有非平稳和异方差特征。因此，本文考虑异方差非平稳 GP，其中长度尺度 $\ell(\mathbf{x})$、信号幅度 $\sigma(\mathbf{x})$ 和噪声标准差 $\omega(\mathbf{x})$ 均被建模为随输入平滑变化的潜在函数 \citep{Heinonen2016, Rhode2020}。基于 Gibbs 非平稳核，输入依赖性被显式引入协方差结构：对任意 $\mathbf{x}, \mathbf{x}'$，核函数 $k_{\mathrm{NS}}(\mathbf{x},\mathbf{x}')$ 由 $\ell(\cdot)$ 和 $\sigma(\cdot)$ 共同决定；对多维输入，$\ell(\mathbf{x})$ 被扩展为对角长度尺度矩阵以适应各向异性。令 $\mathbf{y} = (y_i)_{i=1}^n \in \mathbb{R}^n$ 表示输入 $\mathbf{X} = [\mathbf{x}_1, \ldots, \mathbf{x}_n]^\top \in \mathbb{R}^{n\times d}$ 处的观测值，则 GP 回归模型可表示为：
+\begin{equation}
+	y({\bf{x}}) = f({\bf{x}}) + \varepsilon ({\bf{x}}),\qquad \varepsilon ({\bf{x}})\sim{\cal N}(0,\omega {({\bf{x}})^2}),
+\end{equation}
+其中，潜在函数 $f(\mathbf{x})$ 和零均值观测噪声方差 $\omega(\mathbf{x})^{2}$ 均未知并需要估计。对潜在函数 $f(\mathbf{x})$ 设置零均值 GP 先验：
+\begin{equation}
+	f({\bf{x}})\sim{\cal G}{\cal P}(0,{\mkern 1mu} {K_f}({\bf{x}},{\bf{x'}})),
+\end{equation}
+其中，$K_{f}(\mathbf{x},\mathbf{x}') = \mathrm{cov}(f(\mathbf{x}), f(\mathbf{x}'))$ 表示输入 $\mathbf{x}$ 与 $\mathbf{x}'$ 处输出之间的协方差，该协方差由基于输入相似性的核函数确定。本文采用平方指数核的非平稳推广形式 \citep{Heinonen2016}：
+\begin{equation}
+	{K_f}({\bf{x}},{\bf{x'}}) = \prod\limits_{g = 1}^d {\sigma ({x_g})\sigma ({{x'}_g}){{\left[ {\frac{{2{\ell _g}({x_g}){\ell _g}({{x'}_g})}}{{\ell _g^2({x_g}) + \ell _g^2({{x'}_g})}}} \right]}^{1/2}}} \exp \left( { - \frac{{{{({x_g} - {{x'}_g})}^2}}}{{\ell _g^2({x_g}) + \ell _g^2({{x'}_g})}}} \right),
+\end{equation}
+其中，$x_{g}, x'_{g} \in \mathbb{R}$ 分别为 $\mathbf{x}$ 与 $\mathbf{x}'$ 的第 $g$ 个分量。函数 $\sigma(x_{g})$ 和 $\ell_{g}(x_{g})$ 分别表示第 $g$ 个维度上的信号标准差和长度尺度。长度尺度、信号方差和噪声方差均作为潜在函数建模，并对这些平滑变化的潜在函数设置相互独立的 GP 先验：
+\begin{equation}
+	\log {\ell _g}({x_g}) \equiv {\tilde \ell _g}({x_g})\sim{\cal G}{\cal P}({\mu _{{\ell _g}}},{K_{{\ell _g}}}({x_g},{x'_g})),\qquad g = 1,...,d,
+\end{equation}
+\begin{equation}
+	\log {\sigma _g}({x_g}) \equiv {\tilde \sigma _g}({x_g})\sim{\cal G}{\cal P}({\mu _{{\sigma _g}}},{K_{{\sigma _g}}}({x_g},{x'_g})),\qquad g = 1,...,d,
+\end{equation}
+\begin{equation}
+	\log \omega ({\bf{x}}) \equiv \tilde \omega ({\bf{x}})\sim{\cal G}{\cal P}({\mu _\omega },{K_\omega }({\bf{x}},{\bf{x'}})).
+\end{equation}
+
+对上述三个潜在过程，其协方差函数均采用标准平方指数形式：
+\begin{equation}
+	{K_c}({x_g},{x'_g}) = \alpha _c^2{\mkern 1mu} \exp \left( { - \frac{{{{({x_g} - {{x'}_g})}^2}}}{{2\beta _c^2}}} \right),\qquad c \in \{ \ell ,\sigma ,\omega \} .
+\end{equation}
+
+该模型由九个超参数 ${\boldsymbol{\theta}} = ({\mu _\ell },{\mu _\sigma },{\mu _\omega },{\alpha _\ell },{\alpha _\sigma },{\alpha _\omega },{\beta _\ell },{\beta _\sigma },{\beta _\omega })$ 参数化，它们定义潜在过程 $\widetilde{\boldsymbol{\ell}},\ \widetilde{\boldsymbol{\sigma}},\ \widetilde{\boldsymbol{\omega}}$ 的先验。参数 $\mu$ 和 $\alpha$ 通常对模型性能影响有限，而 $\beta$ 控制潜在函数的平滑程度，一般由先验知识确定。给定数据集 $(\mathbf{X}, \mathbf{y})$，模型可等价写为 $\mathbf{f} \mid \boldsymbol{\ell}, \boldsymbol{\sigma} \sim \mathcal{N}(\mathbf{0}, K_{f})$，其中 $\mathbf{f} = (f({\bf{x}}_{i}))_{i=1}^{n}$ 表示 $\mathbf{X}$ 处潜在函数值向量。$K_{f} \in \mathbb{R}^{n \times n}$ 由式（7）基于信号方差向量 $\boldsymbol{\sigma}$ 和长度尺度向量 $\boldsymbol{\ell}$ 计算得到。观测似然为：
+\begin{equation}
+	{\bf{y}}\mid {\boldsymbol{\ell}},{\boldsymbol{\sigma}}\sim{\cal N}({\bf{0}},{\mkern 1mu} {K_f} + \Omega ),
+\end{equation}
+其中，$\Omega  = {\mathop{\rm diag}\nolimits} ({{\boldsymbol{\omega }}^2}) \in {^{n \times n}}$ 为对角噪声协方差矩阵，$\boldsymbol{\omega}=(\omega(x_i))_{i=1}^n$ 表示噪声标准差向量。后验推断通过 Hamiltonian Monte Carlo（HMC）从完整后验 $p(\mathbf{f}, \tilde{\boldsymbol{\ell}}, \tilde{\boldsymbol{\sigma}}, \tilde{\boldsymbol{\omega}} \mid \mathbf{y}, \theta)$ 中采样实现 \citep{Gelman2013, Hoffman2014}。对 $\mathbf{f}$ 积分可得到联合后验：
+\begin{equation}
+	p(\widetilde{\boldsymbol{l}},\widetilde{\boldsymbol{\sigma}},\widetilde{\boldsymbol{\omega}}\mid {\bf{y}}) 
+	\propto 
+	\mathcal{N}({\bf{y}}\mid {\bf{0}},{K_f} + \Omega ){\mkern 1mu} 
+	\mathcal{N}(\widetilde{\boldsymbol{l}}\mid {\boldsymbol{\mu}}_\ell ,{K_\ell}){\mkern 1mu} 
+	\mathcal{N}(\widetilde{\boldsymbol{\sigma}}\mid {\boldsymbol{\mu}}_\sigma ,{K_\sigma}){\mkern 1mu} 
+	\mathcal{N}(\widetilde{\boldsymbol{\omega}}\mid {\boldsymbol{\mu}}_\omega ,{K_\omega}).
+\end{equation}
+
+$\mathbf{f}$ 的后验分布通过对 $(\tilde{\boldsymbol{\ell}}, \tilde{\boldsymbol{\sigma}}, \tilde{\boldsymbol{\omega}})$ 积分得到：
+\begin{equation}
+		\begin{aligned}
+			p(\mathbf{f}\mid \mathbf{y})
+			&= \iiint
+			p\bigl(\mathbf{f}\mid \widetilde{\boldsymbol{\ell}},\widetilde{\boldsymbol{\sigma}},
+			\widetilde{\boldsymbol{\omega}},\mathbf{y}\bigr)\,
+			p\bigl(\widetilde{\boldsymbol{\ell}},\widetilde{\boldsymbol{\sigma}},
+			\widetilde{\boldsymbol{\omega}}\mid \mathbf{y}\bigr)\,
+			d\widetilde{\boldsymbol{\ell}}\,
+			d\widetilde{\boldsymbol{\sigma}}\,
+			d\widetilde{\boldsymbol{\omega}} \\
+			&\approx \frac{1}{m}\sum_{r=1}^{m}
+			p\bigl(\mathbf{f}\mid
+			\widetilde{\boldsymbol{\ell}}^{(r)},
+			\widetilde{\boldsymbol{\sigma}}^{(r)},
+			\widetilde{\boldsymbol{\omega}}^{(r)},
+			\mathbf{y}\bigr),
+		\end{aligned}
+\end{equation}
+其中
+\begin{equation}
+	\widetilde{\boldsymbol{\ell}}^{(r)},\;
+	\widetilde{\boldsymbol{\sigma}}^{(r)},\;
+	\widetilde{\boldsymbol{\omega}}^{(r)}
+	\sim
+	p\!\left(
+	\widetilde{\boldsymbol{\ell}},
+	\widetilde{\boldsymbol{\sigma}},
+	\widetilde{\boldsymbol{\omega}}
+	\,\middle|\,
+	\mathbf{y}
+	\right)
+\end{equation}
+为 $m$ 个 HMC 后验样本。对每个样本，$\mathbf{f}$ 的条件后验为：
+\begin{equation}
+	p\!\left(
+	\mathbf{f}\,\middle|\,
+	\widetilde{\boldsymbol{\ell}}^{(r)},
+	\widetilde{\boldsymbol{\sigma}}^{(r)},
+	\widetilde{\boldsymbol{\omega}}^{(r)},
+	\mathbf{y}
+	\right)
+	=
+	\mathcal{N}\!\left(
+	\boldsymbol{\mu}^{(r)},
+	\boldsymbol{\Sigma}^{(r)}
+	\right),
+\end{equation}
+
+第 $r$ 个 HMC 样本对应的预测均值和协方差可表示为：
+\begin{equation}
+	{{\boldsymbol{\mu }}^{(r)}} = {(K_f^{(r)})^ \top }{(K_f^{(r)} + {\Omega ^{(r)}})^{ - 1}}{\mathbf{y}},
+\end{equation}
+\begin{equation}
+	{\boldsymbol{\Sigma}^{(r)}} = K_f^{(r)} - {(K_f^{(r)})^ \top }{(K_f^{(r)} + {\Omega ^{(r)}})^{ - 1}}K_f^{(r)},
+\end{equation}
+其中，$K_{f}^{(r)}$ 表示由 $\tilde{\boldsymbol{\ell}}^{(r)}$ 和 $\tilde{\boldsymbol{\sigma}}^{(r)}$ 计算得到的非平稳核矩阵，$\Omega^{(r)}$ 表示由 $\tilde{\boldsymbol{\omega}}^{(r)}$ 得到的对角噪声协方差矩阵。因此，仅需对三个潜在向量 $(\tilde{\boldsymbol{\ell}}, \tilde{\boldsymbol{\sigma}}, \tilde{\boldsymbol{\omega}})$ 进行 HMC 采样，而 $\mathbf{f}$ 的后验可表示为 $m$ 个 Gaussian 分量的混合。对任意测试点，观测值 $y_{*}$ 的单样本预测分布为：
+\begin{equation}
+	y_*
+	\mid
+	\mathbf{y},\,\widetilde{\boldsymbol{\theta}}^{(r)}
+	\sim
+	\mathcal{N}\!\left(
+	\boldsymbol{\mu}_*^{(r)},
+	\,\boldsymbol{\Sigma}_*^{(r)}+\boldsymbol{\omega}_*^{(r)\,2}
+	\right),
+	\qquad
+	\boldsymbol{\omega}_*^{(r)}
+	=
+	\exp\!\left(
+	\widetilde{\boldsymbol{\omega}}^{(r)}(\mathbf{x}_*)
+	\right),
+\end{equation}
+其中，$\boldsymbol{\Sigma}_{*}^{(r)}$ 表示潜在函数预测方差，$\boldsymbol{\omega}_{*}^{(r)}$ 对应预测噪声标准差。对 $m$ 个 HMC 样本进行聚合后，$f_{*}$ 和 $y_{*}$ 的预测分布可近似为：
+\begin{equation}
+	p(f_*\mid \mathbf{y}) \approx \frac{1}{m}\sum_{r=1}^{m} \mathcal{N}\!\bigl(\boldsymbol{\mu}_*^{(r)},\, \boldsymbol{\Sigma}_*^{(r)}\bigr),
+\end{equation}
+
+\begin{equation}
+	p(y_*\mid \mathbf{y}) \approx \frac{1}{m}\sum_{r=1}^{m} 
+	\mathcal{N}\!\bigl(\boldsymbol{\mu}_*^{(r)},\, \boldsymbol{\Sigma}_*^{(r)} + \boldsymbol{\omega}_*^{(r)\,2}\bigr).
+\end{equation}
+
+令 $\overline{\boldsymbol{\mu}}_{*}^{f}
+= \frac{1}{m}\sum_{r=1}^{m}\boldsymbol{\mu}_{*}^{(r)},\quad
+\overline{\boldsymbol{\Sigma}}_{*}^{f}
+= \frac{1}{m}\sum_{r=1}^{m}\boldsymbol{\Sigma}_{*}^{(r)},\quad
+\overline{\boldsymbol{\omega}_{*}^{2}}
+= \frac{1}{m}\sum_{r=1}^{m}\boldsymbol{\omega}_{*}^{(r)\,2}$，则 $y_{*}$ 的预测均值和方差可近似表示为：
+\begin{equation}
+	\mathbb{E}\!\left[{y_*}\mid \mathbf{y}\right]
+	\approx \overline{\boldsymbol{\mu}}_{*}^{\,f},\quad
+	\operatorname{Var}\!\left({y_*}\mid \mathbf{y}\right)
+	\approx \overline{\boldsymbol{\Sigma}}_{*}^{\,f}
+	+ \overline{\boldsymbol{\omega}_{*}^{2}}
+	+ \frac{1}{m}\sum_{r=1}^{m}
+	\left(\boldsymbol{\mu}_{*}^{(r)} - \overline{\boldsymbol{\mu}}_{*}^{\,f}\right)^{2}.
+\end{equation}
+
+式（18）中的预测均值和方差随后用于构造采集函数和稳健优化模型。
+
+\section{基于注意力的稳健优化模型}
+\subsection{注意力加权策略}
+本节介绍一种用于主动学习样本选择的两阶段注意力机制。该方法旨在提高 Gaussian process 回归模型在最优解附近的预测精度，同时保持训练样本在设计空间中的合理分布。该机制借鉴注意力思想，为不同输入分配不同权重，以识别具有最高信息价值的候选点。注意力机制通过 query--key--value 框架运行，相关性更高的候选点被赋予更大权重。给定查询向量 $\mathbf{q} \in \mathbb{R}^{d_k}$、键向量集合 $\mathbf{K} = [\mathbf{k}_1, \ldots, \mathbf{k}_N]^\top \in \mathbb{R}^{N \times d_k}$ 以及值向量集合 $\mathbf{V}=[\mathbf{v}_1,\ldots,\mathbf{v}_N]^\top\in\mathbb{R}^{N\times d_v}$，scaled dot-product attention 定义为：
+\begin{equation}
+	{\rm{Attn}}({\bf{q}},{\bf{K}},{\bf{V}}) = \sum\limits_{j = 1}^N {{w_j}} {\mkern 1mu} {{\bf{v}}_j},\quad {w_j} = {\rm{soft}}\max \left( {\frac{{{{\bf{q}}^ \top }{{\bf{k}}_j}}}{{\sqrt {{d_k}} {\mkern 1mu} \tau }}} \right) = \frac{{\exp \left( {\frac{{{{\bf{q}}^ \top }{{\bf{k}}_j}}}{{\sqrt {{d_k}} {\mkern 1mu} \tau }}} \right)}}{{\sum\limits_{l = 1}^N {\exp } \left( {\frac{{{{\bf{q}}^ \top }{{\bf{k}}_l}}}{{\sqrt {{d_k}} {\mkern 1mu} \tau }}} \right)}},
+\end{equation}
+其中，$\tau > 0$ 表示温度参数（$\tau \downarrow$ 会产生更尖锐的分布），$\sqrt{d_{k}}$ 是为缓解高维点积数值放大而引入的缩放因子。为提高数值稳定性，式（19）中的 softmax 通常写为：
+\begin{equation}
+	{w_j} = \frac{{\exp \left( {\frac{{{{\bf{q}}^ \top }{{\bf{k}}_j}}}{{\sqrt {{d_k}} {\mkern 1mu} \tau }} - m} \right)}}{{\sum\limits_{l = 1}^N {\exp } \left( {\frac{{{{\bf{q}}^ \top }{{\bf{k}}_l}}}{{\sqrt {{d_k}} {\mkern 1mu} \tau }} - m} \right)}},\quad m = {\max _l}\frac{{{{\bf{q}}^ \top }{{\bf{k}}_l}}}{{\sqrt {{d_k}} {\mkern 1mu} \tau }},
+\end{equation}
+其中，$\sum_{j=1}^{N}w_j=1$ 且 $w_j\ge 0$。
+在主动学习中，注意力机制形成了统一的“评分（相关性）--归一化（softmax）--选择”范式。不同相关性目标（如聚焦潜在最优区域或实现空间填充）可以通过相应设计 $\mathbf{q}$ 与 $\mathbf{k}_j$ 来处理，再经 softmax 得到用于排序和选择的 $w_j$。本文采用两阶段策略：Stage I 聚焦包含最优解的潜在子区域，Stage II 增强空间覆盖。
+
+\subsection{基于注意力机制的主动学习方法}
+所提基于注意力的主动学习算法主要包括以下步骤：（1）初始模型训练：构建 NSGP 模型结构，生成初始训练样本，并拟合初始 NSGP 模型。（2）候选点选择：利用质量损失和 maximin 空间填充准则构造两阶段注意力采集函数。（3）采集评分计算：首先计算质量损失权重，并选取高权重点加入候选集；随后计算距离权重，并选取最高权重点扩充训练集。（4）模型更新：使用更新后的训练集更新 NSGP 模型，并返回步骤（2），直到满足停止准则。具体而言，令候选池为 $\mathcal{X}_{\mathrm{pool}} = \{\mathbf{x}_{j}\}_{j=1}^{N}$，当前训练集为 $\mathbf{S}_{t} = \{\mathbf{x}_{i}\}_{i=1}^{n_{t}}$。基于 NSGP 模型，任意点 $\mathbf{x}$ 处的预测均值和方差分别记为 $\mu(\mathbf{x})$ 和 $v(\mathbf{x})$，目标响应为 $T$。两阶段注意力机制定义如下。
+
+第一阶段中，为快速识别包含最优解的潜在子区域，采集函数基于质量损失准则构造，从而优先关注 $\mu(\mathbf{x})$ 接近 $T$ 且不确定性较小的区域。首先将“质量特征”构造为 keys：
+\begin{equation}
+	Q{L_j} = {\left( {\mu ({{\bf{x}}_j}) - T} \right)^2} + v({{\bf{x}}_j}).
+\end{equation}
+
+由于式（21）中的指标越小表示候选点越优，而式（20）中的 softmax 通常默认数值越大越优，因此对质量损失函数取负：$s_{j}^{(1)} = -QL_{j}$。质量损失的 scaled dot-product 形式表示为：
+\begin{equation}
+	s_j^{(1)} = \frac{{{{\bf{q}}^{(1) \top }}{\bf{k}}_j^{(1)}}}{{\sqrt {d_k^{(1)}} }},\quad {\bf{k}}_j^{(1)} = W_k^{(1)}{\left[ { - {{\left( {\mu ({{\bf{x}}_j}) - T} \right)}^2},\; - \lambda v({{\bf{x}}_j})} \right]^ \top },\quad {{\bf{q}}^{(1)}} = W_q^{(1)}{[1,1]^ \top },
+\end{equation}
+其中，$\lambda \ge 0$ 为权衡系数，本文设为 $1$；$d_{k}^{(1)} = \dim(\mathbf{k}_{j}^{(1)}) = \dim(\mathbf{q}^{(1)})$。对式（22）应用 softmax 可得到第一阶段注意力权重：
+\begin{equation}
+	{\alpha _j} = {\rm{soft}}\max \left( {\frac{{{s^{(1)}}}}{{{\tau _1}}}} \right) = \frac{{\exp \left( { - Q{L_j}/{\tau _1}} \right)}}{{\sum\limits_{l = 1}^N {\exp } \left( { - Q{L_l}/{\tau _1}} \right)}},\quad j = 1, \ldots ,N,
+\end{equation}
+其中，$\tau_{1} > 0$ 控制分布尖锐程度。选取权重最高的前 $N_{1}$ 个候选点构成第一阶段候选集：
+\begin{equation}
+	{{\bf{X}}_{{\rm{ready}}}} = {\rm{TopK}}({{\cal X}_{{\rm{pool}}}},\;\alpha ,\;{N_1}),
+\end{equation}
+其中，$\mathcal{X}_{\mathrm{pool}}$ 为候选池，$\mathbf{X}_{\mathrm{ready}}$ 表示第一阶段得到的候选集。$N_{1}$ 控制注意力覆盖宽度：较小取值会强化对质量损失的关注，较大取值则拓宽探索范围。本文将 $N_{1}$ 设为 $10$，以更集中关注潜在最优子区域。
+
+第二阶段计算空间填充注意力权重。目标是从 $\mathbf{X}_{\mathrm{ready}}$ 中选出空间填充性能最好的点，以避免局部聚集并稳定协方差估计。设计点 $\mathbf{x}_{j}$ 与当前训练集之间的最小 Euclidean 距离定义为：
+\begin{equation}
+	{d_{\min }}({{\bf{x}}_j},{{\bf{S}}_t}) = {\min _{{{\bf{x}}_i} \in {{\bf{S}}_t}}}{\left\| {{{\bf{x}}_j} - {{\bf{x}}_i}} \right\|_2}.
+\end{equation}
+
+由于式（25）中的距离越大表示候选点越优，因此可直接写为 scaled dot-product 形式：
+\begin{equation}
+	s_j^{(2)} = \frac{{{{\bf{q}}^{(2) \top }}{\bf{k}}_j^{(2)}}}{{\sqrt {d_k^{(2)}} }},\quad {\bf{k}}_j^{(2)} = W_k^{(2)}{\mkern 1mu} [{\mkern 1mu} {d_{\min }}({{\bf{x}}_j},{{\bf{S}}_t}){\mkern 1mu} ],\quad {{\bf{q}}^{(2)}} = W_q^{(2)}[1],
+\end{equation}
+其中，$d_{k}^{(2)} = \dim(\mathbf{k}_{j}^{(2)}) = \dim(\mathbf{q}^{(2)})$。随后使用 softmax 对式（26）中的评分 $s^{(2)}$ 进行归一化：
+\begin{equation}
+	{\beta _j} = \frac{{\exp (s_j^{(2)}/{\tau _2})}}{{\sum\limits_{{{\bf{x}}_\ell } \in {{\bf{X}}_{{\rm{ready}}}}} {\exp } (s_\ell ^{(2)}/{\tau _2})}},\quad {{\bf{x}}_j} \in {{\bf{X}}_{{\rm{ready}}}},
+\end{equation}
+其中，温度参数 $\tau_{2} > 0$ 控制对远离已有样本点的候选点的偏好：$\tau_{2}$ 越小，权重越集中于最远候选点。不失一般性，本文设 $\tau_{1} = \tau_{2} = 0.5$。从 $\mathbf{X}_{\mathrm{ready}}$ 中按照 $\beta_{j}$ 排序选取前 $N_{2}$ 个点：
+\begin{equation}
+	{{\bf{X}}_{{\rm{new}}}} = {\rm{TopK}}\left( {{{\bf{X}}_{{\rm{ready}}}},{\mkern 1mu} \beta ,{\mkern 1mu} {N_2}} \right),
+\end{equation}
+其中，$\mathbf{X}_{\mathrm{new}}$ 表示第二阶段选取的设计点，随后用于更新训练集。由式（28）得到的新实验点位于潜在最优子区域，同时在该区域内保持良好空间填充性，从而显著提高样本利用效率。整体基于注意力的主动学习 NSGP 建模流程如图~1 和算法~1 所示。
+
+\algrenewcommand\algorithmicrequire{\textbf{输入：}}
+\algrenewcommand\algorithmicensure{\textbf{输出：}}
+\begin{algorithm}[h]
+	\caption{基于注意力的主动学习 NSGP 建模流程。}
+	\label{alg:attn-nsgp}
+	\begin{algorithmic}[1]
+		\Require 最大迭代次数 $N_{\max}$；每次迭代新增点数 $N_{2}$；
+		初始训练集 $\mathbf{S}_{t}$；候选池 $\mathcal{X}_{\mathrm{pool}}$。
+		\Ensure 最终训练集和更新后的 NSGP 模型。
+		\State 使用 $\mathbf{S}_{t}$ 拟合初始 NSGP 模型。
+		\For{$s \gets 1$ 至 $N_{\max}$}
+		\State 基于当前 $\mathbf{S}_{t}$ 拟合（或更新）NSGP 模型。
+		\State 对所有 $\mathbf{x}\in\mathcal{X}_{\mathrm{pool}}$ 计算预测均值 $\mu(\mathbf{x})$ 和方差 $v(\mathbf{x})$。
+		\State 根据式~(23) 在 $\mathcal{X}_{\mathrm{pool}}$ 上计算质量损失权重 $\{\alpha_j\}$，
+		并形成 $\mathbf{X}_{\mathrm{ready}}$（例如使用 $N_1$ 的 \textsc{TopK}）。
+		\For{$i \gets 1$ 至 $N_{2}$}
+		\State 根据式~(27) 在 $\mathbf{X}_{\mathrm{ready}}$ 上计算空间填充权重 $\{\beta_j\}$。
+		\State 选择 $\mathbf{x}_\star \gets
+		\arg\max_{\mathbf{x}_j\in\mathbf{X}_{\mathrm{ready}}}\,\beta_j$.
+		\State $\mathbf{S}_{t} \gets \mathbf{S}_{t} \cup \{\mathbf{x}_\star\}$;\quad
+		$\mathcal{X}_{\mathrm{pool}} \gets
+		\mathcal{X}_{\mathrm{pool}}\setminus\{\mathbf{x}_\star\}$.
+		\State 使用新的 $\mathbf{S}_{t}$ 更新 NSGP 模型。
+		\EndFor
+		\EndFor
+	\end{algorithmic}
+\end{algorithm}
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.9\linewidth]{FIG1.pdf}
+	\caption{基于注意力的主动学习 NSGP 建模流程。}
+	\label{fig:procedure}
+\end{figure}
+
+\subsection{所提稳健优化方法}
+本文提出的两阶段注意力主动学习方法用于 NSGP 建模与参数优化，其流程如图~2 所示。
+\begin{description}
+	\item[步骤 1：] 使用初始训练样本拟合初始 NSGP 模型。
+	\item[步骤 2：] 利用式~(17)--(18) 给出的初始模型输出构造质量损失函数和空间距离函数。
+	\item[步骤 3：] 结合步骤 2 中的两个指标，构建两阶段注意力采集函数。
+	\item[步骤 4：] 应用算法~1 所述主动学习过程选择新的设计点。
+	\item[步骤 5：] 更新训练数据集和 NSGP 模型，获得预测响应均值与方差。
+	\item[步骤 6：] 基于步骤 5 的预测均值与方差，将质量损失函数构造为稳健优化目标。
+	\item[步骤 7：] 使用 genetic algorithm（GA）在输入变量可行域内搜索全局最优，从而确定最优参数设置。
+\end{description}
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.8\linewidth]{FIG2.pdf}
+	\caption{所提 NSGP 建模与参数优化方法流程图。}
+	\label{fig:fig2}
+\end{figure}
+
+
+\section{案例研究}
+\subsection{二维数值算例}
+本节采用一个二维测试函数验证所提方法的有效性。该函数为分段定义的响应面，在二维输入空间中呈现明显非平稳性。$f(x_{1}, x_{2})$ 的数学表达式为：
+\begin{equation}
+	f({x_1},{x_2}) = \left\{ {\begin{array}{*{20}{l}}
+			{(2 + 0.5{x_2})\sin ({x_1}) + x_2^2,}&{{\rm{if  }}{x_1} > 0},\\
+			{x_1^2 + x_2^2 + \left( {8 - (x_1^2 + x_2^2)} \right)\left( {1 - {e^{ - x_1^2}}} \right),}&{{\rm{if  }}{x_1} \le 0},
+	\end{array}} \right.
+\end{equation}
+其中 $(x_{1}, x_{2}) \in [-2, 2]^{2}$。当 $x_{1} > 0$ 时，函数沿 $x_{1}$ 方向呈周期振荡；当 $x_{1} \le 0$ 时，函数呈圆对称且较平滑的响应。该行为反映了显著的非平稳性和结构不连续性。为进一步评估模型在目标区域内的局部预测性能，本文为该测试函数定义特定目标值 $f^{*}$。围绕该目标值，感兴趣区域 ${\mathcal{R}}^{t}$ 定义为满足以下条件的输入点集合：
+\begin{equation}
+	{{\cal R}^t} = \left\{ {({x_1},{x_2}) \in {\cal X}\left| {\left| {f({x_1},{x_2}) - {f^*}} \right| < t} \right.} \right\},
+\end{equation}
+其中 $t > 0$ 为预设阈值。集合 ${\mathcal{R}}^{t}$ 可视为设计空间中的潜在最优子区域，其预测精度对稳健优化至关重要。本文将目标值设为 $f^{*} = 1.5$，有意避开极值点，以避免极值行为造成误导。为量化预测值与真实值之间的差异，采用 root mean square error（RMSE）作为性能指标，定义如下：
+\begin{equation}
+	{\rm{RMSE}} = \sqrt {\frac{1}{n}\sum\limits_{i = 1}^n {{{\left( {\hat f(x_1^i,x_2^i) - f(x_1^i,x_2^i)} \right)}^2}} } ,
+\end{equation}
+其中，$\hat{f}(x_{1}^{i}, x_{2}^{i})$ 表示模型预测值，$f(x_{1}^{i}, x_{2}^{i})$ 为真实值，$n$ 为测试样本总数。在该实验中，首先采用 Latin hypercube sampling（LHS）生成 $20$ 个初始设计样本，并用于拟合初始 NSGP 模型。随后，使用所提两阶段注意力主动学习方法选取额外 $20$ 个样本，最终得到 $40$ 个设计点。之后利用最终训练数据更新 NSGP 模型。为进行直接比较，本文采用若干常用实验设计方法作为基准：G\_optimality（G\_opt）方法 \citep{Omwando2024}、D\_optimality（D\_opt）方法 \citep{Lichota2016}、LHS 方法 \citep{Guo2023} 以及 centroidal Voronoi tessellations（CVT）方法 \citep{Vassiliades2018}。所有方法使用相同总样本数。不同方法在二维设计空间中获得的 $40$ 个设计点空间分布如图~3 所示。
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.7\linewidth]{FIG3.pdf}
+	\caption{不同方法获得的 40 个设计点空间分布。}
+	\label{fig:design-points}
+\end{figure}
+
+图 3 中，紫色圆点表示初始设计点，红色菱形表示所提主动学习方法选取的点，红色虚线表示目标值 $1.5$ 对应的等值线。可以看出，所提方法（PM）选取的设计点主要集中于目标值等值线附近。这说明算法倾向于将实验点分配到潜在最优区域。同时，靠近目标等值线的设计点具有较均匀的空间分布，没有明显重叠或聚集，体现了所提主动学习方法良好的空间填充能力。为进一步展示所提方法的预测精度优势，本文评估潜在最优区域内的 RMSE 值，并在不同总训练样本数（40--100）以及不同新增设计点数（20 和 10）下进行比较。对每种方法，RMSE 计算重复 30 次，以保证比较结果可靠。结果汇总于表 1--2 和图 4。具体而言，表~1 和表~2 分别报告基于 10 个和 20 个主动学习设计点时的 RMSE 值，以及 PM 相较于其他方法的提升比例。其他比较结果，包括最大值、最小值、第一四分位数（Q1）和第三四分位数（Q3），见附录~A。
+
+\begin{table}[h!]
+	\centering
+	\caption{10 个主动学习设计点下的 RMSE 结果与 PM 提升比例（PM 相对自身的提升未定义，记为“—”）。}
+	\label{tab:rmse_pm_10pts}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{c ccccc c ccccc}
+			\toprule
+			\multirow{2}{*}{数量} & \multicolumn{5}{c}{RMSE（均值）} & & \multicolumn{5}{c}{RMSE（中位数）} \\
+			\cmidrule(lr){2-6} \cmidrule(lr){8-12}
+			& D\_opt & G\_opt & LHS & CVT & PM & & D\_opt & G\_opt & LHS & CVT & PM \\
+			\midrule
+			40  & 0.0919 & 0.0894 & 0.0780 & 0.0651 & 0.0562 & & 0.0854 & 0.0823 & 0.0675 & 0.0639 & 0.0503 \\
+			50  & 0.0621 & 0.0650 & 0.0565 & 0.0560 & 0.0386 & & 0.0621 & 0.0663 & 0.0539 & 0.0586 & 0.0382 \\
+			60  & 0.0514 & 0.0540 & 0.0451 & 0.0532 & 0.0369 & & 0.0487 & 0.0548 & 0.0448 & 0.0430 & 0.0362 \\
+			70  & 0.0427 & 0.0442 & 0.0392 & 0.0365 & 0.0317 & & 0.0430 & 0.0419 & 0.0349 & 0.0357 & 0.0325 \\
+			80  & 0.0369 & 0.0416 & 0.0330 & 0.0333 & 0.0246 & & 0.0365 & 0.0390 & 0.0320 & 0.0309 & 0.0241 \\
+			90  & 0.0308 & 0.0323 & 0.0261 & 0.0296 & 0.0216 & & 0.0288 & 0.0317 & 0.0266 & 0.0264 & 0.0204 \\
+			100 & 0.0225 & 0.0249 & 0.0238 & 0.0252 & 0.0181 & & 0.0228 & 0.0250 & 0.0228 & 0.0232 & 0.0192 \\
+			\midrule
+			\multirow{2}{*}{数量} & \multicolumn{5}{c}{PM 提升（均值，\%）} & & \multicolumn{5}{c}{PM 提升（中位数，\%）} \\
+			\cmidrule(lr){2-6} \cmidrule(lr){8-12}
+			& D\_opt & G\_opt & LHS & CVT & PM & & D\_opt & G\_opt & LHS & CVT & PM \\
+			\midrule
+			40  & 38.85\% & 37.14\% & 27.95\% & 13.67\% & — & & 41.10\% & 38.88\% & 25.48\% & 21.28\% & — \\
+			50  & 37.84\% & 40.62\% & 31.68\% & 31.07\% & — & & 38.49\% & 42.38\% & 29.13\% & 34.81\% & — \\
+			60  & 28.21\% & 31.67\% & 18.18\% & 30.64\% & — & & 25.67\% & 33.94\% & 19.20\% & 15.81\% & — \\
+			70  & 25.76\% & 28.28\% & 19.13\% & 13.15\% & — & & 24.42\% & 22.43\% &  6.88\% &  8.96\% & — \\
+			80  & 33.33\% & 40.87\% & 25.45\% & 26.13\% & — & & 33.97\% & 38.21\% & 24.69\% & 22.01\% & — \\
+			90  & 29.87\% & 33.13\% & 17.24\% & 27.03\% & — & & 29.17\% & 35.65\% & 23.31\% & 22.73\% & — \\
+			100 & 19.56\% & 27.31\% & 23.95\% & 28.17\% & — & & 15.79\% & 23.20\% & 15.79\% & 17.24\% & — \\
+			\bottomrule
+		\end{tabular}%
+	}
+\end{table}
+
+
+% Requires: \usepackage{graphicx,booktabs}
+\begin{table}[h!]
+	\centering
+	\caption{20 个主动学习设计点下的 RMSE 结果与 PM 提升比例（PM 相对自身的提升未定义，记为“—”）。}
+	\label{tab:rmse_pm_20pts}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{c ccccc c ccccc}
+			\toprule
+			\multirow{2}{*}{数量} & \multicolumn{5}{c}{RMSE（均值）} & & \multicolumn{5}{c}{RMSE（中位数）} \\
+			\cmidrule(lr){2-6} \cmidrule(lr){8-12}
+			& D\_opt & G\_opt & LHS & CVT & PM & & D\_opt & G\_opt & LHS & CVT & PM \\
+			\midrule
+			40  & 0.1517 & 0.0954 & 0.0730 & 0.0817 & 0.0540 & & 0.1385 & 0.0890 & 0.0644 & 0.0802 & 0.0310 \\
+			50  & 0.0990 & 0.0530 & 0.0538 & 0.0719 & 0.0324 & & 0.0954 & 0.0530 & 0.0510 & 0.0730 & 0.0249 \\
+			60  & 0.0499 & 0.0481 & 0.0396 & 0.0565 & 0.0216 & & 0.0481 & 0.0458 & 0.0390 & 0.0562 & 0.0207 \\
+			70  & 0.0453 & 0.0410 & 0.0359 & 0.0511 & 0.0235 & & 0.0466 & 0.0422 & 0.0356 & 0.0503 & 0.0222 \\
+			80  & 0.0345 & 0.0400 & 0.0359 & 0.0419 & 0.0223 & & 0.0367 & 0.0378 & 0.0347 & 0.0431 & 0.0205 \\
+			90  & 0.0319 & 0.0298 & 0.0263 & 0.0391 & 0.0187 & & 0.0298 & 0.0310 & 0.0263 & 0.0377 & 0.0180 \\
+			100 & 0.0281 & 0.0321 & 0.0227 & 0.0354 & 0.0173 & & 0.0281 & 0.0328 & 0.0230 & 0.0352 & 0.0164 \\
+			\midrule
+			\multirow{2}{*}{数量} & \multicolumn{5}{c}{PM 提升（均值，\%）} & & \multicolumn{5}{c}{PM 提升（中位数，\%）} \\
+			\cmidrule(lr){2-6} \cmidrule(lr){8-12}
+			& D\_opt & G\_opt & LHS & CVT & PM & & D\_opt & G\_opt & LHS & CVT & PM \\
+			\midrule
+			40  & 64.40\% & 43.40\% & 26.03\% & 33.90\% & — & & 77.62\% & 65.17\% & 51.86\% & 61.35\% & — \\
+			50  & 67.27\% & 38.87\% & 39.78\% & 54.94\% & — & & 73.90\% & 53.02\% & 51.18\% & 65.89\% & — \\
+			60  & 56.71\% & 55.09\% & 45.45\% & 61.77\% & — & & 56.96\% & 54.80\% & 46.92\% & 63.17\% & — \\
+			70  & 48.12\% & 42.68\% & 34.54\% & 54.01\% & — & & 52.36\% & 47.39\% & 37.64\% & 55.86\% & — \\
+			80  & 35.36\% & 44.25\% & 37.88\% & 46.78\% & — & & 44.14\% & 45.77\% & 40.92\% & 52.44\% & — \\
+			90  & 41.38\% & 37.25\% & 28.90\% & 52.17\% & — & & 39.60\% & 41.94\% & 31.56\% & 52.25\% & — \\
+			100 & 38.43\% & 46.11\% & 23.79\% & 51.13\% & — & & 41.64\% & 50.00\% & 28.70\% & 53.41\% & — \\
+			\bottomrule
+		\end{tabular}%
+	}
+\end{table}
+
+\begin{figure}[h!]
+	\centering
+	% --- Top row: Potential optimum subregion ---
+	\subfigure[10 个主动学习点。]{%
+		\resizebox*{5cm}{!}{\includegraphics{FIG4a.pdf}}}\hspace{15pt}
+	\subfigure[20 个主动学习点。]{%
+		\resizebox*{5cm}{!}{\includegraphics{FIG4b.pdf}}}
+	
+	% --- Bottom row: Overall response surface ---
+	\subfigure[10 个主动学习点。]{%
+		\resizebox*{5cm}{!}{\includegraphics{FIG5a.pdf}}}\hspace{15pt}
+	\subfigure[20 个主动学习点。]{%
+		\resizebox*{5cm}{!}{\includegraphics{FIG5b.pdf}}}
+	
+	\caption{不同主动学习设计点数量下的 RMSE 比较：
+		(a)--(b) 潜在最优子区域；
+		(c)--(d) 整体响应面。}
+	\label{fig:rmse_combined}
+\end{figure}
+
+根据表 1 和图 4(a-b) 的结果，当使用 10 个主动学习设计点时，PM 方法在所有训练样本规模下均在潜在最优区域取得最低平均 RMSE。当实验样本总数为 40 时，PM 方法的平均 RMSE 为 0.0562，比 CVT 方法（0.0651）低约 13.67\%，比 D\_opt 方法（0.0919）低约 38.85\%。随着样本规模增加，该优势仍然保持。当总样本数达到 100 时，PM 方法的平均 RMSE 进一步降至 0.0181，相较 D\_opt 方法（0.0225）降低 19.56\%，相较 CVT 方法（0.0252）降低 28.17\%。在所有比较中，当训练样本数为 80 且与 D\_opt 方法比较时，提升最大，达到 40.87\%；当训练样本数为 70 且与 CVT 方法比较时，提升最小，为 13.15\%。
+中位数 RMSE 反映模型的典型表现。PM 方法在该指标上同样表现突出，说明结果具有较高稳健性。在 10 个主动学习设计点和总计 40 个实验样本下，PM 方法的中位数 RMSE 为 $0.0503$，比 CVT 方法（$0.0639$）低约 $21.28\%$，比 D\_opt 方法（$0.0854$）低约 $41.10\%$。当实验样本总数达到 $100$ 时，PM 方法中位数 RMSE 为 $0.0192$，相较 D\_opt 和 LHS 方法（均为 $0.0228$）降低 $15.79\%$，相较 G\_opt 方法（$0.0250$）降低 $23.20\%$。最大提升出现在训练样本数为 $50$ 且与 G\_opt 方法比较时，达到 $42.38\%$；最小提升出现在训练样本数为 $70$ 且与 LHS 方法比较时，为 $6.88\%$。
+由表 2 和图 4(a-b) 可见，当新增 20 个主动学习样本时，PM 方法在所有情况下的 RMSE 均优于其他方法，且在总样本数较小的学习初期优势尤为明显。当总实验样本数为 40 时，PM 方法平均 RMSE 为 $0.0540$，比 LHS（$0.0730$）低约 $26.03\%$，比 D\_opt（$0.1517$）低 $64.40\%$。当总样本数增加至 $100$ 时，PM 方法平均 RMSE 降至 $0.0173$，仍为表 2 中最低值；此时相较 LHS（$0.0227$）低 $23.79\%$，相较 CVT（$0.0354$）低 $51.13\%$。在所有样本规模下，最大提升出现在样本数为 $50$ 且与 D\_opt 比较时，达到 $67.27\%$；最小提升出现在样本数为 $100$ 且与 LHS 比较时，为 $23.79\%$。
+
+当主动学习样本数为 20 时，PM 方法在中位数 RMSE 上也体现出明显优势。总样本数为 40 时，其中位数 RMSE 为 $0.0310$，比次优 LHS 方法（$0.0644$）低 $51.86\%$，比 D\_opt 方法（$0.1385$）低 $77.62\%$。当总样本数增加至 100 时，PM 方法中位数 RMSE 为 $0.0164$，为所有方法中最低；此时比 LHS 方法（$0.0230$）低 $28.70\%$，比 CVT 方法（$0.0352$）低 $53.41\%$。最大提升出现在 40 个训练样本下相较 D\_opt 方法，达到 $77.62\%$；最小提升出现在 100 个训练样本下相较 LHS 方法，为 $28.70\%$。
+
+表格和图中的比较结果表明，所提 PM 方法在潜在最优区域内的预测精度具有明显优势。该优势主要来自其两阶段注意力机制。第一阶段选择设计点以显著提高潜在最优区域的预测精度；第二阶段引入空间距离准则抑制局部聚集，从而增强该区域内的空间填充性。相比之下，G\_opt 方法通过最小化设计空间中的最大预测方差来提高预测能力；D\_opt 方法通过最大化信息矩阵行列式优化整体参数估计精度；LHS 方法关注在各输入维度上均匀分布样本，以覆盖整个设计空间；CVT 方法通过将样本点移动至 Voronoi 单元质心来保证均匀采样密度。因此，在多种条件下，这些方法在潜在最优区域中的预测精度低于 PM 方法。
+
+值得注意的是，从整体响应面预测精度来看（图 4(c-d)），PM 方法的 RMSE 略高于其他方法。这是因为 PM 方法将新增设计点分配至最有希望的潜在最优区域，以服务稳健优化；这种分配不可避免会牺牲部分全局预测精度。然而，图 4 的结果表明，全局精度下降幅度远小于潜在最优区域中的精度提升。稳健优化更强调最优区域内的预测精度，因此局部提升对获得高质量、稳定的解更为关键。尽管 PM 方法在全局精度上有小幅损失，但显著提升了潜在最优区域的预测精度，从而增强稳健参数设计中解的质量、稳定性和有效性。
+
+\subsection{五维数值算例}
+在实际应用中，多个变量往往存在复杂的非线性交互。为评估所提方法在高维场景下的适用性和优势，本文考虑一个五维分段定义数值测试函数：
+
+\begin{equation}
+	y = \left\{ {\begin{array}{*{20}{l}}
+			{2\left( {\sin (\pi {x_1}) + \cos (2\pi {x_2}) + x_3^2 + {e^{ - {x_4}}} + {x_5} + {x_3} - 1} \right)},&{{\rm{if }}{x_1} + {x_2} > 1,}&{}\\
+			{2\left( {\sin (\pi {x_1}) + \cos (2\pi {x_2}) + x_3^2 + {e^{ - {x_4}}} + {x_5} - 1} \right)},&{{\rm{if }}{x_1} + {x_2} \le 1},&{}
+	\end{array}} \right.
+\end{equation}
+其中 $x_g \in [0, 1],\ g = 1, 2, \ldots, 5$。该函数在两个子区域 $x_{1} + x_{2} > 1$ 和 $x_{1} + x_{2} \le 1$ 之间存在结构变化，导致输出行为显著不同，体现了典型的输入依赖非平稳性。本算例中，目标值设为 $5.5$，最优区域定义为 $5 \le y \le 6$。本文采用 RMSE 评价该区域内的预测精度。实验流程如下：首先，采用 LHS 方法选取 $80$ 个初始实验样本并拟合 NSGP 模型；其次，使用所提两阶段注意力主动学习方法生成额外 $20$ 个样本，总样本数为 $100$；最后，该过程重复 $30$ 次，并将最优区域内的 RMSE 结果与多种替代方法比较。结果见表 3 和图 5。
+
+\begin{table}[h]
+	\centering
+	\caption{最优区域（$5 \le y \le 6$）内的 RMSE 结果}
+	\label{tab:rmse_optimum_region}
+		\begin{tabular}{lccccccc}
+			\toprule
+			方法 & 均值 & 中位数 & 最小值 & 最大值 & Q1 & Q3 \\
+			\midrule
+			D\_opt & 0.4075 & 0.4107 & 0.2340 & 0.5197 & 0.3665 & 0.4539 \\
+			G\_opt & 0.4146 & 0.4025 & 0.2901 & 0.5934 & 0.3497 & 0.4806 \\
+			CVT    & 0.4372 & 0.4360 & 0.3162 & 0.5928 & 0.3870 & 0.4762 \\
+			LHS    & 0.4372 & 0.4447 & 0.3256 & 0.7144 & 0.3804 & 0.4860 \\
+			PM     & 0.3711 & 0.3793 & 0.2239 & 0.4921 & 0.3102 & 0.4189 \\
+			\bottomrule
+		\end{tabular}%
+\end{table}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.48\linewidth]{FIG6.pdf}
+	\caption{最优区域（$5 \le y \le 6$）内 RMSE 结果比较。}
+	\label{fig:rmse_optimum_region}
+\end{figure}
+
+如表 3 所示，PM 方法平均 RMSE 为 $0.3711$，优于所有替代方法。D\_opt 方法以 $0.4075$ 排名第二，而 G\_opt 方法的平均 RMSE 最高，为 $0.4146$。相较 D\_opt 和 G\_opt，PM 方法分别降低约 $8.93\%$ 和 $10.49\%$。相较平均 RMSE 均为 $0.4372$ 的 LHS 和 CVT，降低幅度达到 $15.12\%$。在中位数 RMSE 方面，PM 方法同样表现最佳（$0.3793$），相较 G\_opt（$0.4025$）降低 $5.76\%$，相较 D\_opt（$0.4107$）降低 $7.65\%$，相较 LHS（$0.4360$）降低 $13.00\%$，相较 CVT（$0.4447$）降低 $14.71\%$。PM 方法在均值和中位数 RMSE 上均保持优势，说明其具有良好稳定性和整体优越性。这一表现来自其带注意力机制的两阶段主动学习框架。第一阶段使用基于质量损失的采集函数细化最优区域内的响应面表示；第二阶段通过最大化最小空间距离减少局部聚集，并提高该区域内的空间填充性。该设计显著提升了稳健优化中实验资源利用效率，并得到更有效的非平稳响应面模型。
+
+\subsection{锂电池荷电状态预测}
+本节采用 \cite{Mustafa2024} 提出的锂电池荷电状态（SoC）预测案例评价所提方法性能。在电池放电的不同阶段，SoC 对电流和电压表现出明显不同的响应速率，体现出典型非平稳行为。该案例以 18650 型锂离子电池为研究对象，输出变量为 SoC（\%）。SoC 定义为当前电量相对于电池总容量的百分比，取值范围为 $y \in [0,100]$，是评价电池剩余容量的关键指标。该案例输入包括三个变量：温度 $x_1$（°C）、电流 $x_2$（A）和电压 $x_3$（V）。实验中，SoC 目标值设为 $30$，最优区域定义为 $25 \le y \le 35$。首先，采用 LHS 方法生成 180 个初始训练点；随后，使用所提两阶段主动学习算法额外选取 30 个点，总计 210 个实验样本。整个过程重复 20 次，以保证结果稳健。表 4 和图 6 给出了不同方法在最优区域内的 RMSE 结果。
+
+\begin{table}[htbp]
+	\centering
+	\caption{20 次运行的 RMSE 结果。}
+	\label{tab:rmse_20runs}
+		\begin{tabular}{lcccccc}
+			\toprule
+			方法 & 均值 & 中位数 & 最大值 & 最小值 & Q1 & Q3 \\
+			\midrule
+			G\_opt & 7.9793 & 6.8957 & 18.3144 & 5.5627 & 6.0980 & 8.3195 \\
+			D\_opt & 7.8077 & 7.0209 & 15.5626 & 5.9420 & 6.7881 & 7.6917 \\
+			CVT    & 10.7557 & 9.2375 & 26.6414 & 6.9491 & 7.2289 & 12.0859 \\
+			LHS    & 9.2725 & 7.6885 & 16.9593 & 6.4247 & 7.0761 & 10.5335 \\
+			PM     & 6.9880 & 6.7256 & 10.9925 & 4.8605 & 6.1098 & 7.3933 \\
+			\bottomrule
+		\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=0.48\linewidth]{FIG7.pdf}
+	\caption{电池 SoC 预测结果比较。}
+	\label{fig:battery_soc_comparison}
+\end{figure}
+
+表 4 和图 6 表明，PM 方法在最优区域内取得最高预测精度。其平均 RMSE 为 $6.9880$，显著低于所有基准方法。CVT 方法平均 RMSE 最高（$10.7557$），相较 PM 方法差距为 $35.03\%$；次优的 D\_opt 方法（$7.8077$）仍落后 $10.50\%$。中位数 RMSE 的趋势与均值一致：PM 方法再次取得最低值（$6.7256$），比 CVT（$9.2375$）低 $27.19\%$，说明其在多数试验中能够保持较高预测精度。除集中趋势外，PM 方法在极值控制方面也表现出色。其最大 RMSE 仅为 $10.9925$，比 CVT 方法的 $26.6414$ 低 $58.74\%$，表明其可有效抑制极端误差。其最小 RMSE 为 $4.8605$，优于所有其他方法，比 CVT 的最小 RMSE（$6.9491$）低 $30.05\%$，说明搜索过程中更容易收敛到高精度解。在稳定性方面，PM 方法的四分位距（IQR）为 $1.2835$，仅为 CVT（$4.8570$）的 $26.43\%$，降低幅度为 $73.57\%$。这进一步确认 PM 方法在不牺牲精度的情况下具有较高稳健性。如图 6 所示，PM 方法的 RMSE 分布更集中、离群点更少，验证了其在最优区域内兼具预测精度和稳健性的优势。
+
+
+\subsection{微型火箭稳健参数设计}
+
+本节采用 \cite{Box2011} 提出的微型火箭设计案例，验证所提方法在产品质量设计中的有效性和优势。火箭模型由头锥、箭体、带降落伞的发射阻尼锁、内管和稳定翼组成，如图 7 所示。输出响应为最大飞行高度（MH）$y$（m），是评价火箭整体性能的关键指标。最大高度分析能够综合反映推力、气动阻力和结构设计性能。在该案例中，目标值设为 400 m，代表典型的 nominal-the-best 质量特性。模拟飞行轨迹以及最大飞行高度与头锥直径之间的关系分别见图 8(a) 和 8(b)。
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[width=0.7\linewidth]{FIG8.pdf}% 
+	\caption{火箭模型示意图。}
+	\label{fig:rocket_model}
+\end{figure}
+
+\begin{figure}[h!]
+	\centering
+	\subfigure[火箭飞行轨迹示意。]{%
+		\resizebox*{0.4\linewidth}{!}{\includegraphics{FIG9a.pdf}}%
+	}\hspace{5pt}
+	\subfigure[MH 与头锥直径。]{%
+		\resizebox*{0.4\linewidth}{!}{\includegraphics{FIG9b.pdf}}%
+	}
+	\caption{模拟飞行轨迹以及 MH 与头锥直径之间的关系。}
+	\label{fig:rocket_traj_pair}
+\end{figure}
+
+该案例包含五个连续输入参数：头锥长度 $x_{1}$（cm）、头锥底部直径 $x_{2}$（cm）、头锥壁厚 $x_{3}$（cm）、箭体长度 $x_{4}$（cm）和箭体内径 $x_{5}$（cm）。其取值范围分别为 $x_{1} \in [0,20]$、$x_{2} \in [2,5]$、$x_{3} \in [0,1]$、$x_{4} \in [30,50]$ 和 $x_{5} \in [1,2]$。此外，还有一个二元离散变量，即头锥形状 $x_{6}$，其中 $x_{6} = 1$ 表示切尖 ogive，$x_{6} = 0$ 表示截尖 ogive。根据设计规范，当头锥较长（$x_{1} > 10$ cm）时，优先采用切尖 ogive，以降低超声速飞行中的激波阻力，从而改善气动性能并提高稳定性；当头锥较短（$x_{1} < 10$ cm）时，采用截尖 ogive，以提高亚声速飞行中的升力和稳定性。$x_{1} = 10$ cm 处的形状转换引入明显结构变化，使输出响应在该位置呈阶跃行为，从而产生显著非平稳特征。
+
+该案例中稳健参数设计的目标，是识别一组最优设计参数，使火箭最大飞行高度达到 $400$ m 或尽可能接近该目标。为此，后续实验采用所提方法提升潜在最优区域内的预测精度，从而构建更高效、更稳定的非平稳响应面模型。实验流程如下：首先，采用 LHS 方法选取 $30$ 个初始训练点，并拟合基于 NSGP 的初始非平稳响应面模型；随后，利用所提两阶段主动学习算法生成 $20$ 个额外设计点，使训练样本总数达到 $50$，如表 5 所示。
+
+\begin{table}[h!]
+	\centering
+	\caption{PM 方法实验结果。}
+	\label{tab:pm_runs}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{c cccccc c c cccccc cc}
+			\toprule
+			\multicolumn{8}{c}{运行 1--25} & & \multicolumn{8}{c}{运行 26--50} \\
+			\cmidrule(lr){1-8} \cmidrule(lr){10-17}
+			运行 & $x_1$ & $x_2$ & $x_3$ & $x_4$ & $x_5$ & $x_6$ & $y$ & & 运行 & $x_1$ & $x_2$ & $x_3$ & $x_4$ & $x_5$ & $x_6$ & $y$ \\
+			\midrule
+			1 & 15.5 & 3.13 & 0.96 & 48.8 & 1.89 & 1 & 26.7  & & 26 &  9.9 & 2.20 & 0.02 & 38.4 & 1.62 & 0 & 262    \\
+			2 & 12.9 & 2.81 & 0.07 & 41.3 & 1.96 & 1 & 130    & & 27 & 14.2 & 2.91 & 0.28 & 38.6 & 1.86 & 1 &  87.5  \\
+			3 &  1.3 & 2.06 & 0.63 & 37.4 & 1.31 & 0 & 227    & & 28 & 16.6 & 2.71 & 0.90 & 40.9 & 1.38 & 1 &  50.5  \\
+			4 &  0.5 & 3.97 & 0.10 & 45.6 & 1.23 & 0 &  7.59  & & 29 & 17.2 & 3.32 & 0.44 & 30.8 & 1.14 & 1 &  33.6  \\
+			5 & 10.7 & 4.17 & 0.13 & 33.9 & 1.86 & 1 &  1.1   & & 30 &  5.2 & 4.50 & 1.00 & 32.0 & 1.54 & 0 &   9.25 \\
+			6 & 18.7 & 4.81 & 0.86 & 36.7 & 1.18 & 1 &  0.39  & & 31 &  0.7 & 2.08 & 0.25 & 30.7 & 1.92 & 0 & 373.89 \\
+			7 & 17.9 & 3.85 & 0.65 & 47.0 & 1.49 & 1 &  4.59  & & 32 &  4.9 & 2.03 & 0.16 & 34.8 & 1.88 & 0 & 358.91 \\
+			8 &  2.6 & 2.39 & 0.83 & 45.5 & 1.53 & 0 & 146    & & 33 &  5.8 & 2.12 & 0.02 & 30.2 & 1.97 & 0 & 369.85 \\
+			9 &  2.0 & 4.69 & 0.67 & 32.9 & 1.15 & 0 &  5.65  & & 34 &  8.7 & 2.02 & 0.19 & 33.4 & 1.89 & 0 & 362.51 \\
+			10 & 11.1 & 4.97 & 0.14 & 44.2 & 1.92 & 1 &  0.64  & & 35 & 10.5 & 2.03 & 0.35 & 31.3 & 1.86 & 1 & 358.85 \\
+			11 & 18.0 & 3.99 & 0.82 & 40.6 & 1.98 & 1 &  7.19  & & 36 &  0.4 & 2.04 & 0.77 & 34.9 & 1.95 & 0 & 365.41 \\
+			12 &  2.0 & 2.96 & 0.24 & 42.6 & 1.33 & 0 &  6.25  & & 37 &  4.0 & 2.05 & 0.17 & 32.8 & 1.85 & 0 & 358.41 \\
+			13 & 17.3 & 4.63 & 0.91 & 43.3 & 1.00 & 1 &  0.27  & & 38 &  2.1 & 2.08 & 0.45 & 35.6 & 1.99 & 0 & 359.29 \\
+			14 & 11.2 & 3.71 & 0.32 & 33.5 & 1.72 & 1 & 29     & & 39 &  6.8 & 2.12 & 0.07 & 33.5 & 1.99 & 0 & 358.02 \\
+			15 &  8.1 & 3.75 & 0.50 & 35.8 & 1.69 & 0 & 24.6   & & 40 & 10.3 & 2.03 & 0.08 & 36.1 & 1.89 & 1 & 348.89 \\
+			16 & 15.6 & 2.50 & 0.23 & 47.4 & 1.26 & 1 & 77.6   & & 41 &  2.0 & 2.04 & 0.89 & 33.6 & 1.84 & 0 & 349.3  \\
+			17 &  7.5 & 3.15 & 0.44 & 31.5 & 1.57 & 0 & 73.3   & & 42 &  3.0 & 2.13 & 0.33 & 31.3 & 1.87 & 0 & 347.57 \\
+			18 &  8.8 & 3.45 & 0.70 & 44.6 & 1.81 & 0 & 25.9   & & 43 &  8.1 & 2.04 & 0.85 & 35.0 & 1.90 & 0 & 345.66 \\
+			19 & 19.0 & 2.26 & 0.04 & 49.5 & 1.47 & 1 & 159    & & 44 &  4.3 & 2.12 & 1.00 & 30.4 & 1.90 & 0 & 350.13 \\
+			20 &  6.8 & 4.13 & 0.50 & 36.1 & 1.44 & 0 & 11.8   & & 45 &  7.8 & 2.00 & 0.93 & 30.4 & 1.82 & 0 & 360.47 \\
+			21 & 11.9 & 3.55 & 0.84 & 42.0 & 1.74 & 1 & 17.3   & & 46 &  8.4 & 2.02 & 0.55 & 32.3 & 1.89 & 0 & 365.2  \\
+			22 &  6.6 & 3.58 & 0.80 & 37.9 & 1.06 & 0 & 19.4   & & 47 & 11.8 & 2.09 & 0.14 & 32.0 & 1.86 & 1 & 340.6  \\
+			23 &  2.9 & 2.01 & 0.76 & 47.8 & 1.74 & 0 & 306    & & 48 & 19.8 & 2.01 & 0.82 & 34.2 & 1.97 & 1 & 353.39 \\
+			24 & 13.4 & 2.35 & 0.10 & 39.8 & 1.22 & 1 & 139    & & 49 & 12.9 & 2.04 & 0.72 & 35.0 & 1.90 & 1 & 342.23 \\
+			25 &  8.7 & 2.18 & 0.54 & 40.2 & 1.03 & 0 & 147    & & 50 & 14.0 & 2.00 & 0.40 & 36.3 & 1.88 & 1 & 341.54 \\
+			\bottomrule
+		\end{tabular}}
+\end{table}
+
+如表 5 所示，所提方法能够使新增加的第 31--50 个实验点响应值接近 400 的目标值。同时，这些点在设计空间中分布均匀，没有明显聚集或重叠。该结果验证了所提两阶段主动学习建模方法在兼顾空间填充和目标聚焦采样方面的有效性。基于表 5 中的实验数据，构建 NSGP 模型，并利用其输出建立稳健优化模型：
+\begin{equation}
+	L({\bf{x}}) = {\left( {f({\bf{x}}) - 400} \right)^2} + v({\bf{x}}),
+\end{equation}
+其中，$f(\mathbf{x})$ 为预测响应，$v(\mathbf{x})$ 为预测方差，$400$ 为预设最优目标值。随后采用 genetic algorithm 最小化式（33），得到最优输入参数配置。算法参数设定如下：初始种群规模为 $50$，最大迭代次数为 $200$，停止阈值为 $20$，其余参数保持默认。优化过程重复 $30$ 次，并记录每种方法的实际 MH、质量损失（QL）值以及模拟火箭飞行轨迹。结果见表 6 和图 9。此外，为评估不同初始样本量的影响，附录 B 给出了初始训练样本为 $40$、$50$ 和 $60$ 时的比较结果（对应总训练样本分别为 $60$、$70$ 和 $80$）。
+
+\begin{table}[h!]
+	\centering
+	\caption{不同方法的 MH 和 QL。}
+	\label{tab:mh_ql}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{lcccccccccccc}
+			\toprule
+			\multirow{2}{*}{方法} & \multicolumn{2}{c}{均值} & \multicolumn{2}{c}{中位数} & \multicolumn{2}{c}{最大值} & \multicolumn{2}{c}{最小值} & \multicolumn{2}{c}{Q1} & \multicolumn{2}{c}{Q3} \\
+			\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11} \cmidrule(lr){12-13}
+			& MH & QL & MH & QL & MH & QL & MH & QL & MH & QL & MH & QL \\
+			\midrule
+			PM     & 365.60 & 1908.09 & 373.00 & 1456.03 & 391.00 & 4798.06 & 303.00 &   91.75 & 348.25 & 1128.42 & 381.75 & 2967.72 \\
+			LHS    & 351.60 & 4496.26 & 356.00 & 4166.58 & 379.00 & 13731.95 & 287.00 & 1279.43 & 347.25 & 2767.04 & 364.25 & 5655.17 \\
+			CVT    & 327.33 & 8549.50 & 332.50 & 8538.47 & 381.00 & 15838.97 & 248.00 & 1719.21 & 308.75 & 5774.53 & 349.50 & 11256.48 \\
+			D\_opt & 338.27 & 6099.77 & 344.50 & 5423.04 & 373.00 & 20689.30 & 217.00 & 1076.50 & 326.50 & 4158.41 & 359.25 & 6954.43 \\
+			G\_opt & 345.90 & 5288.10 & 347.50 & 4660.24 & 379.00 & 16077.51 & 275.00 &  271.08 & 330.25 & 3033.79 & 370.75 & 7422.89 \\
+			\bottomrule
+		\end{tabular}%
+	}
+\end{table}
+
+\begin{figure}[h!]
+	\centering
+	% --- First row: MH and QL ---
+	\subfigure[MH。]{%
+		\includegraphics[width=0.45\linewidth]{FIG10a.pdf}}
+	\hfill
+	\subfigure[QL。]{%
+		\includegraphics[width=0.45\linewidth]{FIG10b.pdf}}
+	
+	% --- Second row: Flight trajectories ---
+	\vskip\baselineskip
+	\subfigure[飞行轨迹。]{%
+		\includegraphics[width=0.45\linewidth]{FIG11.pdf}}
+	
+	\caption{不同方法的优化结果：
+		(a) MH；(b) QL；(c) 飞行轨迹。}
+	\label{fig:optimization_results}
+\end{figure}
+
+
+%
+%\begin{figure}[h]
+%	\centering
+%	\subfigure[MH.]{%
+%		\includegraphics[width=0.45\linewidth]{FIG10a.pdf}}
+%	\hfill
+%	\subfigure[QL.]{%
+%		\includegraphics[width=0.45\linewidth]{FIG10b.pdf}}
+%	\caption{MH and QL of 30 optimization runs.}
+%	\label{fig:mh_ql}
+%\end{figure}
+%
+%
+%\begin{figure}[h]
+%	\centering
+%	\includegraphics[width=0.5\linewidth]{FIG11.pdf}
+%	\caption{Flight trajectories of different methods.}
+%	\label{fig:flight_trajectories}
+%\end{figure}
+
+
+图 9(a-b) 清晰展示了不同方法在 MH 和 QL 指标上的性能差异。相较于其他方法，所提 PM 方法取得了更高的 MH 均值和中位数，且离群点更少，说明优化过程具有更强稳健性。对于 QL，PM 方法的均值和中位数均低于其他方法，30 次实验结果也更集中、波动更小，体现了更优的优化性能和稳定性。
+
+如表 6 所示，PM 方法在所有指标上均表现优越。相较 LHS 方法，其 QL 均值从 4496.26 降至 1908.09（降低 57.56\%），中位数降低 65.05\%；最大和最小 QL 分别降低 65.06\% 和 92.83\%。对于 MH，均值（365.6）和中位数（373）分别提高 3.98\% 和 4.78\%，最大值和最小值分别提高 3.17\% 和 5.57\%。相较 CVT 方法，PM 方法的 QL 均值和中位数分别降低 22.30\% 和 82.95\%，MH 均值和最小值分别提高 11.69\% 和 22.18\%。相较 D\-opt 方法，QL 最大值和均值分别降低 76.81\% 和 68.72\%，MH 均值和中位数分别提高 8.08\% 和 8.27\%。相较 G\-opt 方法，QL 均值、中位数和最小值分别降低 63.92\%、68.76\% 和 66.16\%，MH 均值和中位数分别提高 5.69\% 和 7.34\%，最大值和最小值分别提高 3.17\% 和 10.18\%。
+
+结果表明，带注意力机制的两阶段主动学习算法能够更准确捕捉潜在最优区域内的响应面，并提高设计点利用效率。这一改进显著增强了响应面模型在稳健参数设计中的有效性，并提高了最优解的稳健性和可靠性。
+
+本文将 30 次优化运行中取得最高最大飞行高度的设计确定为最优解。图 9(c) 展示了不同方法所得最优解的 MH 值及其对应飞行轨迹。相较其他方法，PM 方法在 MH 方面表现最佳，达到 391 m，更接近 400 m 目标值。就飞行时间而言，各方法均在约 7.5 s 达到峰值高度，并在约 122 s 返回地面。然而，其他方法的 MH 值明显低于 PM 方法。轨迹剖面对比表明，尽管各方法上升持续时间几乎相同，PM 方法仍提供了更接近目标值的稳健最优解，从而提高产品质量改进效率。
+
+\subsection{讨论}
+本文提出一种基于注意力机制的两阶段主动学习算法。其核心在于构建一个能够动态关注潜在最优区域和设计点空间填充性能的注意力模型。该机制引导新增设计点以优先且均衡的方式分配至目标子区域。因此，潜在最优区域内的预测精度得到显著提升，进而增强最优解的稳健性和有效性。
+
+虽然该方法以全局预测精度小幅下降为代价强化局部建模，但这并不削弱其整体有效性。优先在潜在最优区域新增设计点，可显著提高该区域精度，并对整体预测产生适度正向作用。由于潜在最优区域内的精度在很大程度上决定优化质量，将计算和实验资源集中于该区域对于有效稳健优化至关重要。
+
+由于注意力引导的迭代更新，该方法计算成本略高于经典设计（如 LHS），但与其他主动学习方法相当。该方法在稳健参数设计中实现了更高的建模和优化效率，为小样本条件下的非平稳响应面建模提供了实用方案。
+
+\section{结论}
+针对小样本条件下非平稳响应的质量改进问题，本文提出一种基于注意力主动学习的 NSGP 建模与稳健优化框架。首先，采用 Bayesian 层次化设定构建 NSGP 结构，刻画设计变量与输出响应之间的输入依赖非平稳性。其次，设计两阶段注意力机制以平衡质量损失与空间填充，引导新设计点向潜在最优区域聚集。最后，更新训练集和 NSGP 模型，并构造基于质量损失的稳健优化模型，以获得最优输入参数设置。该方法的关键优势在于两阶段注意力加权采样策略，它能够高效识别非平稳响应的潜在最优区域，将实验资源分配至该区域，并提升优化关键区域的预测精度。因此，设计点利用效率更高，非平稳响应面模型也更有效，进而得到更稳健的优化结果。
+
+需要指出的是，所提方法采用聚焦式注意力策略，优先提升潜在最优区域的预测精度，以提高稳健参数设计效率。全局预测精度并非显式目标，这可能限制其在其他优化任务中的适用性。未来研究可探索同时考虑全局与局部精度的多层次注意力机制，以进一步扩展所提方法的适用范围。
+
+
+
+\section*{利益冲突声明}
+
+作者声明不存在竞争性利益。
+
+
+\section*{基金资助}
+
+本文得到国家自然科学基金（项目编号 72301146）、中国博士后科学基金（项目编号 2023M741802、2024T170430）、中国统计科学研究基金（项目编号 2023LZ010）以及江苏省高等学校自然科学研究项目（项目编号 23KJB630012）资助。
+
+
+\section*{作者简介}
+\begin{itemize}
+ \item 冯泽彪于 2021 年在南京理工大学经济管理学院获得博士学位，现为南京邮电大学管理学院助理教授。研究方向包括质量工程、计算机实验和机器学习。
+
+ \item 杨旭目前在南京邮电大学管理学院攻读管理科学与工程硕士学位。研究方向包括质量工程和机器学习。
+ 
+ \item 王建军现为南京理工大学经济管理学院教授，博士毕业于南京理工大学经济管理学院。研究方向包括质量工程、应用统计和增材制造。
+
+ \item 黄卫东现任南京邮电大学管理学院院长、教授，博士毕业于南京航空航天大学计算机科学与技术专业。主要研究方向包括智能优化、决策和应急管理。
+\end{itemize}
+
+\section*{数据可用性声明}
+
+作者确认，支撑本文研究结论的数据均可在正文中获得。
+
+
+\begin{thebibliography}{}
+
+%\bibitem[Alexopoulos et~al.(2022)]{Alexopoulos2022}
+%Alexopoulos, K., I. Anagiannis, N. Nikolakis, and G. Chryssolouris. 2022. ``A quantitative approach to resilience in manufacturing systems.'' \emph{International Journal of Production Research} 60(24): 7178--7193.
+
+\bibitem[Alshraideh and del Castillo(2014)]{Alshraideh2014}
+Alshraideh, H., and E. del Castillo. 2014. ``Gaussian process modeling and optimization of profile response experiments.'' \emph{Quality and Reliability Engineering International} 30 (4): 449--462.
+
+\bibitem[An et~al.(2020)]{An2020}
+An, Y., D. Wang, and X. Zhang. 2020. ``A novel local temperature change detection approach in a 3D thermal field.'' \emph{Quality Technology \& Quantitative Management} 17 (6): 723--737.
+
+\bibitem[Ankenman et~al.(2010)]{Ankenman2010}
+Ankenman, B., B. L. Nelson, and J. Staum. 2010. ``Stochastic Kriging for simulation metamodeling.'' \emph{Operations Research} 58 (2): 371--382.
+
+%\bibitem[Aye and Heyns(2018)]{Aye2018}
+%Aye, S. A., and P. S. Heyns. 2018. ``Prognostics of slow speed bearings using a composite integrated Gaussian process regression model.'' \emph{International Journal of Production Research} 56 (14): 4860--4873.
+
+\bibitem[Bao et~al.(2016)]{Bao2016}
+Bao, L. L., Q. Huang, and K. B. Wang. 2016. ``Robust parameter design for profile quality control.'' \emph{Quality and Reliability Engineering International} 32 (3): 1059--1070.
+
+\bibitem[Barde(2024)]{Barde2024}
+Barde, S.. 2024. ``Bayesian estimation of large-scale simulation models with Gaussian process regression surrogates.'' \emph{Computational Statistics \& Data Analysis} 196: 107972.
+
+\bibitem[Box, et~al.(2011)]{Box2011}
+Box, S., C. M. Bishop, and H. Hunt. 2011. ``Stochastic six-degree-of-freedom flight simulator for passively controlled high-power rockets.'' \emph{Journal of Aerospace Engineering} 24 (1): 31--45.
+
+\bibitem[Chen and Tuo(2022)]{Chen2022}
+Chen, G., and R. Tuo. 2022. ``Projection pursuit Gaussian process regression.'' \emph{IISE Transactions} 55 (9): 901--911.
+
+\bibitem[Chen et~al.(2021)]{Chen2021}
+Chen, J. H., L. L. Kang, and G. Lin. 2021. ``Gaussian process assisted active learning of physical laws.'' \emph{Technometrics} 63 (3): 329--342.
+
+\bibitem[Chuang and Wu(2017)]{Chuang2017}
+Chuang, C. J., and C. W. Wu. 2017. ``Determining optimal process mean and quality improvement in a profit-maximization supply chain model.'' \emph{Quality Technology \& Quantitative Management} 16 (2): 154--169.
+
+
+%\bibitem[Cui et~al.(2024)]{Cui2024}
+%Cui, F., Z. Jiang, X. Zhou, J. Zheng, and N. Geng. 2024. ``A configuration optimization approach for reconfigurable manufacturing system based on column-generation combined with graph neural network.'' \emph{International Journal of Production Research} 63(3): 970--991.
+
+%\bibitem[Dabbas et~al.(2010)]{Dabbas2010}
+%Dabbas, R. M., J. W. Fowler, D. A. Rollier, and D. McCarville. 2010. ``Multiple response optimization using mixture-designed experiments and desirability functions in semiconductor scheduling.'' \emph{International Journal of Production Research} 41 (5): 939--961.
+
+\bibitem[Davis et~al.(2021)]{Davis2021}
+Davis, C. B., C. M. Hans, and T. J. Santner. 2021. ``Prediction of non-stationary response functions using a Bayesian composite Gaussian process.'' \emph{Computational Statistics \& Data Analysis} 154: 107083.
+
+\bibitem[Dellino et~al.(2012)]{Dellino2012}
+Dellino, G., J. P. C. Kleijnen, and C. Meloni. 2012. ``Robust optimization in simulation: Taguchi and Krige combined.'' \emph{INFORMS Journal on Computing} 24 (3): 471--484.
+
+\bibitem[Ding et~al.(2024)]{Ding2024}
+Ding, N., Z. He, S. He, and L. Song. 2024. ``Real-time profile monitoring schemes considering covariates using Gaussian process via sensor data.'' \emph{Quality Technology \& Quantitative Management} 21 (1): 35--53.
+
+
+\bibitem[Ding et~al.(2004)]{Ding2004}
+Ding, R., D. K. J. Lin, and D. Wei. 2004. ``Dual-response surface optimization: a weighted MSE approach.'' \emph{Quality Engineering} 16 (3): 377--385.
+
+%\bibitem[Dong et~al.(2025)]{Dong2025}
+%Dong, H., Z. Fan, Q. Wang, W. Zhou, Y. Yu, L. Fu, and J. Li. 2025. ``Modeling, analysis and improvement of production throughput and energy consumption in Li-ion battery manufacturing lines.'' \emph{International Journal of Production Research}: 1--15.
+
+\bibitem[Fan(2000)]{Fan2000}
+Fan, S. K. S. 2000. ``A generalized global optimization algorithm for dual response systems.'' \emph{Journal of Quality Technology} 32 (4): 444--456.
+
+\bibitem[Feng et~al.(2021)]{Feng2021}
+Feng, Z., J. Wang, Y. Ma, and Y. Tu. 2021. ``Robust parameter design based on Gaussian process with model uncertainty.'' \emph{International Journal of Production Research} 59 (9): 2772--2788.
+
+\bibitem[Feng et~al.(2025)]{Feng2025}
+Feng, Z., J. Wang and W. Huang. 2025. ``An active learning multi-objective robust optimization framework via Gaussian process models under uncertainty.'' \emph{Engineering Optimization}: 1-24.
+
+
+\bibitem[Gelman et~al.(2013)]{Gelman2013}
+Gelman, A., H. S. Stern, J. B. Carlin, D. B. Dunson, A. Vehtari, and D. B. Rubin. 2013. \emph{Bayesian Data Analysis}. Chapman and Hall/CRC.
+
+\bibitem[Gnanasambandam et~al.(2024)]{Gnanasambandam2024}
+Gnanasambandam, R., B. Shen, A. C. C. Law, C. Dou, and Z. Kong. 2024. ``Deep Gaussian process for enhanced Bayesian optimization and its application in additive manufacturing.'' \emph{IISE Transactions}: 1--14.
+
+\bibitem[Gramacy and Lee(2008)]{Gramacy2008}
+Gramacy, R. B., and H. K. H. Lee. 2008. ``Bayesian treed Gaussian process models with an application to computer modeling.'' \emph{Journal of the American Statistical Association} 103 (483): 1119--1130.
+
+\bibitem[Guo et~al.(2023)]{Guo2023}
+Guo, B., X. Li, M. Liu, and X. Yang. 2023. ``Construction of orthogonal general sliced Latin hypercube designs.'' \emph{Statistical Papers} 64 (3): 987--1014.
+
+\bibitem[Han et~al.(2023)]{Han2021}
+Han, M., Q. Huang, L. Ouyang, and X. Zhao. 2023. ``A kriging-based active learning algorithm for contour estimation of integrated response with noise factors.'' \emph{Engineering with Computers} 39(2): 1341--1362.
+
+\bibitem[Han and Tan(2016)]{Han2016}
+Han, M., and M. H. Y. Tan. 2016. ``Integrated parameter and tolerance design with computer experiments.'' \emph{IIE Transactions} 48 (11): 1004--1015.
+
+\bibitem[He et~al.(2021)]{He2021}
+He, Z., Y. Gao, L. Qu, and Z. Wang. 2021. ``A nonparametric CUSUM scheme for monitoring multivariate time-between-events-and-amplitude data with application to automobile painting.'' \emph{International Journal of Production Research} 60 (18): 5432--5449.
+
+
+\bibitem[Heinonen et~al.(2016)]{Heinonen2016}
+Heinonen, M., H. Mannerström, J. Rousu, S. Kaski, and H. Lähdesmäki. 2016. ``Non-stationary Gaussian process regression with Hamiltonian Monte Carlo.'' \emph{PMLR}: 732--740.
+
+\bibitem[Hoffman and Gelman(2014)]{Hoffman2014}
+Hoffman, M. D., and A. Gelman. 2014. ``The No-U-Turn sampler: adaptively setting path lengths in Hamiltonian Monte Carlo.'' \emph{Journal of Machine Learning Research} 15 (1): 1593--1623.
+
+\bibitem[Huang(2022)]{Huang2022}
+Huang, Q.. 2022. ``An impulse response formulation for small-sample learning and control of additive manufacturing quality.'' \emph{IISE Transactions} 55 (9): 926--939.
+
+\bibitem[Jiang and Tan(2021)]{Jiang2021}
+Jiang, F., and M. H.-Y. Tan. 2021. ``Shifted log loss Gaussian process model for expected quality loss prediction in robust parameter design.'' \emph{Quality Technology \& Quantitative Management} 18 (5): 527--551.
+
+
+\bibitem[Kleijnen and Mehdad(2014)]{Kleijnen2014}
+Kleijnen, J. P. C., and E. Mehdad. 2014. ``Multivariate versus univariate Kriging metamodels for multi-response simulation models.'' \emph{European Journal of Operational Research} 236 (2): 573--582.
+
+%\bibitem[Komini et~al.(2023)]{Komini2023}
+%Komini, L., M. Langelaar, and B. Kriegesmann. 2023. ``Robust topology optimization considering part distortion and process variability in additive manufacturing.'' \emph{Advances in Engineering Software} 186: 103551.
+
+\bibitem[Konomi et~al.(2014)]{Konomi2014}
+Konomi, B., G. Karagiannis, A. Sarkar, X. Sun, and G. Lin. 2014. ``Bayesian treed multivariate Gaussian process with adaptive design: Application to a carbon capture unit.'' \emph{Technometrics} 56 (2): 145--158.
+
+%\bibitem[Kontar et~al.(2016)]{Kontar2016}
+%Kontar, R., S. Zhou, and J. Horst. 2016. ``Estimation and monitoring of key performance indicators of manufacturing systems using the multi-output Gaussian process.'' \emph{International Journal of Production Research} 55 (8): 2304--2319.
+
+\bibitem[Li et~al.(2025a)]{Li2025}
+Li, A., Z. He, Q. Wang, Y. Zhang, and Y. Ma. 2025a. ``A multi-objective evolutionary algorithm with mutual-information-guided improvement phase for feature selection in complex manufacturing processes.'' \emph{European Journal of Operational Research} 323 (3): 952--965.
+
+
+\bibitem[Li and Ma(2022)]{Li2022}
+Li, T., and J. Ma. 2022. ``Attention mechanism based mixture of Gaussian processes.'' \emph{Pattern Recognition Letters} 161: 130--136.
+
+\bibitem[Li et~al.(2025b)]{Liw2025}
+Li, W., J. Qin, C. Wu and F. Tsung. 2025b. ``Online monitoring of directed count-weighted network with attributes via the gravity model.''  \emph{Quality Technology \& Quantitative Management}: 1-16.
+
+
+\bibitem[Li and Zhou(2016)]{Li2016}
+Li, Y., and Q. Zhou. 2016. ``Pairwise meta-modeling of multivariate output computer models using nonseparable covariance function.'' \emph{Technometrics} 58 (4): 483--494.
+
+\bibitem[Lichota(2016)]{Lichota2016}
+Lichota, P.. 2016. ``Inclusion of the D\_optimality in multisine manoeuvre design for aircraft parameter estimation.'' \emph{Journal of Theoretical and Applied Mechanics} 54 (1): 87--98.
+
+\bibitem[Liu et~al.(2021)]{Liu2021}
+Liu, Y., D. Huang, B. Liu, Q. Feng, and B. Cai. 2021. ``Adaptive ranking based ensemble learning of Gaussian process regression models for quality-related variable prediction in process industries.'' \emph{Applied Soft Computing} 101: 107060.
+
+\bibitem[Liu et~al.(2025)]{Liu2025}
+Liu, Z., Y. Li, X. Yue, and E. Pan. 2025. ``Latent functional Gaussian process incorporating output spatial correlations.'' \emph{IISE Transactions}: 1--14.
+
+\bibitem[Meng et~al.(2022)]{Meng2022}
+Meng, Q., S. Wang, and S. H. Ng. 2022. ``Combined global and local search for optimization with Gaussian process models.'' \emph{INFORMS Journal on Computing} 34 (1): 622--637.
+
+\bibitem[Mustafa et~al.(2024)]{Mustafa2024}
+Mustafa, H., C. Bourelly, M. Vitelli, F. Milano, M. Molinara, and L. Ferrigno. 2024. ``SoC estimation on Li-ion batteries: A new EIS-based dataset for data-driven applications.'' \emph{Data Brief} 57: 110947.
+
+\bibitem[Omwando(2024)]{Omwando2024}
+Omwando, C. N.. 2024. ``G-criterion for second order rotatable designs constructed using trigonometric transformations.'' \emph{American Journal of Applied Mathematics and Statistics} 12 (3): 70--74.
+
+\bibitem[Ouyang et~al.(2025)]{Ouyang2025}
+Ouyang, L., Y. Ling, L. Liu, M. Sun, and M. Wang. 2025. ``Double-robust Bayesian variable selection and model prediction with spherically symmetric error.'' \emph{IISE Transactions}: 1--26.
+
+\bibitem[Ouyang et~al.(2016)]{Ouyang2016}
+Ouyang, L., Y. Ma, J. H. Byun, J. Wang, and Y. Tu. 2016. ``An interval approach to robust design with parameter uncertainty.'' \emph{International Journal of Production Research} 54 (11): 3201--3215.
+
+\bibitem[Peterson et~al.(2009)]{Peterson2009}
+Peterson, J. J., G. Mir{\'o}-Quesada, and E. del Castillo. 2009. ``A Bayesian reliability approach to multiple response optimization with seemingly unrelated regression models.'' \emph{Quality Technology \& Quantitative Management} 6 (4): 353--369.
+
+
+\bibitem[Rhode(2020)]{Rhode2020}
+Rhode, S.. 2020. ``Non-stationary Gaussian process regression applied in validation of vehicle dynamics models.'' \emph{Engineering Applications of Artificial Intelligence} 93: 103716.
+
+\bibitem[Santner et~al.(2018)]{Santner2018}
+Santner, T. J., B. J. Williams, and W. I. Notz. 2018. \emph{Space-filling designs for computer experiments}. New York: Springer.
+
+\bibitem[Sauer et~al.(2022)]{Sauer2022}
+Sauer, A., R. B. Gramacy, and D. Higdon. 2022. ``Active learning for deep Gaussian process surrogates.'' \emph{Technometrics} 65 (1): 4--18.
+
+\bibitem[Tan and Wu(2012)]{Tan2012}
+Tan, M. H. Y., and C. F. J. Wu. 2012. ``Robust design optimization with quadratic loss derived from Gaussian process models.'' \emph{Technometrics} 54 (1): 51--63.
+
+\bibitem[Vassiliades et~al.(2018)]{Vassiliades2018}
+Vassiliades, V., K. Chatzilygeroudis, and J. Mouret. 2018. ``Using centroidal voronoi tessellations to scale up the multidimensional archive of phenotypic elites algorithm.'' \emph{IEEE Transactions on Evolutionary Computation} 22 (4): 623--630.
+
+\bibitem[Wang et~al.(2025)]{Wang2025}
+Wang, C., J. Xiao, X. Huang, and J. Xu. 2025. ``RSDS: an efficient adaptive Kriging-based method for structural reliability analysis considering the distance between sample points.'' \emph{Quality Technology \& Quantitative Management}: 1--27.
+
+
+%\bibitem[Wang et~al.(2023)]{Wang2023}
+%Wang, F., A. Wang, T. Tang, and J. Shi. 2023. ``SGL-PCA: Health index construction with sensor sparsity and temporal monotonicity for mixed high-dimensional signals.'' \emph{IEEE Transactions on Automation Science and Engineering} 20 (1): 372--384.
+
+\bibitem[Wang et~al.(2019)]{Wang2019}
+Wang, H., J. Yuan, and S. H. Ng. 2019. ``Gaussian process based optimization algorithms with input uncertainty.'' \emph{IISE Transactions} 52 (4): 377--393.
+
+\bibitem[Wang et~al.(2022)]{Wang2022}
+Wang, W., X. Yue, B. Haaland, and C. F. J. Wu. 2022. ``Gaussian processes with input location error and applications to the composite parts assembly process.'' \emph{SIAM/ASA Journal on Uncertainty Quantification} 10 (2): 619--650.
+
+%\bibitem[Wang et~al.(2025)]{Wang2025}
+%Wang, X., L. J. Hong, Z. Jiang, and H. Shen. 2025. ``Gaussian process-based random search for continuous optimization via simulation.'' \emph{Operations Research} 73 (1): 385--407.
+
+\bibitem[Williams and Rasmussen(2006)]{Williams2006}
+Williams, C. K. I., and C. E. Rasmussen. 2006. \emph{Gaussian Processes for Machine Learning}. Cambridge: MIT Press.
+
+\bibitem[Wu and Hamada(2011)]{Wu2011}
+Wu, C. F. J., and M. S. Hamada. 2011. \emph{Experiments: Planning, Analysis and Parameter Design Optimization}. New York: John Wiley \& Sons.
+
+\bibitem[Wu et~al.(2020)]{Wu2020}
+Wu, C. W., M. H. Shu, and N. Y. Wu. 2020. ``Acceptance sampling schemes for two-parameter Lindley lifetime products under a truncated life test.'' \emph{Quality Technology \& Quantitative Management} 18 (3): 382--395.
+
+
+%\bibitem[Wu et~al.(2018)]{WuJ2018}
+%Wu, J., Y. Yuan, H. Gong, and T. Tseng. 2018. ``Inferring 3D ellipsoids based on cross-sectional images with applications to porosity control of additive manufacturing.'' \emph{IISE Transactions} 50 (7): 570--583.
+
+\bibitem[Xie et~al.(2022)]{Xie2022}
+Xie, J., Z. Ma, D. Chang, G. Zhang, and J. Guo. 2022. ``GPCA: A probabilistic framework for Gaussian process embedded channel attention.'' \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence} 44 (11): 8230--8248.
+
+%\bibitem[Xu et~al.(2020)]{Xu2020}
+%Xu, T., Y. Liu, L. Tang, and C. Liu. 2020. ``Improvement of Kriging interpolation with learning kernel in environmental variables study.'' \emph{International Journal of Production Research} 60 (4): 1284--1297.
+
+\bibitem[Yu et~al.(2022)]{Yu2022}
+Yu, J., S. Li, X. Liu, Y. Gao, S. Wang, and C. Liu. 2022. ``Dynamic convolutional gated recurrent unit attention auto-encoder for feature learning and fault detection in dynamic industrial processes.'' \emph{International Journal of Production Research} 61 (21): 7434--7452.
+
+\bibitem[Zhang et~al.(2024)]{Zhang2024}
+Zhang, W., Z. Zhao, H. Xu, X. Li, and Z. Wang. 2024. ``AK-Gibbs: An active learning Kriging model based on Gibbs importance sampling algorithm for small failure probabilities.'' \emph{Computer Methods in Applied Mechanics and Engineering} 426: 116992.
+
+\bibitem[Zhong et~al.(2024)]{Zhong2024}
+Zhong, Y., Z. Ling, L. Liu, S. Zhang, and H. Wen. 2024. ``Deep Gaussian attention network for lumber surface defect segmentation.'' \emph{IEEE Transactions on Instrumentation and Measurement} 73: 1--12.
+
+\bibitem[Zhou et~al.(2025)]{Zhou2025}
+Zhou, M., R. Zuo, C. Sung, Y. Tong, and X. Wang. 2025. ``Region-optimal Gaussian process surrogate model via Dirichlet process for cold-flow and combustion emulations.'' \emph{Computer Methods in Applied Mechanics and Engineering} 439: 117894.
+
+\end{thebibliography}
+
+
+\section{附录}
+
+\appendix
+
+\section{ }
+
+\begin{table}[h!]
+	\centering
+	\caption{10 个主动学习样本下的最大 RMSE。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.1976 & 0.1426 & 0.2912 & 0.1105 & 0.1619 \\
+		50 & 0.1206 & 0.0990 & 0.0935 & 0.0777 & 0.0840 \\
+		60 & 0.0871 & 0.0824 & 0.0679 & 0.1891 & 0.0544 \\
+		70 & 0.0826 & 0.0801 & 0.0815 & 0.0784 & 0.0490 \\
+		80 & 0.0581 & 0.1178 & 0.0539 & 0.0565 & 0.0440 \\
+		90 & 0.0566 & 0.0465 & 0.0409 & 0.0618 & 0.0480 \\
+		100 & 0.0313 & 0.0371 & 0.0365 & 0.0510 & 0.0290 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+如表 A1 所示，PM 方法始终对最大 RMSE 具有更好的控制能力，且其优势随样本量增加更加明显。例如，当总样本数为 40 时，最大 RMSE 为 0.1619，比 LHS（0.2912）降低 44.40\%。当样本数增加至 100 时，最大值进一步降至 0.0290，为所有方法中最低，相较 D\_opt（0.0313）提升 7.35\%，相较 CVT（0.0510）提升 43.14\%。最大提升出现在 60 个样本时，PM 相较 CVT 提升 71.23\%。
+
+\begin{table}[h!]
+	\centering
+	\caption{10 个主动学习样本下的最小 RMSE。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.0398 & 0.0639 & 0.0265 & 0.0381 & 0.0213 \\
+		50 & 0.0143 & 0.0232 & 0.0260 & 0.0167 & 0.0126 \\
+		60 & 0.0302 & 0.0064 & 0.0051 & 0.0332 & 0.0210 \\
+		70 & 0.0012 & 0.0025 & 0.0234 & 0.0029 & 0.0047 \\
+		80 & 0.0191 & 0.0008 & 0.0212 & 0.0208 & 0.0134 \\
+		90 & 0.0017 & 0.0204 & 0.0048 & 0.0167 & 0.0122 \\
+		100 & 0.0003 & 0.0167 & 0.0067 & 0.0016 & 0.0004 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+如表 A2 所示，PM 方法在最小 RMSE 方面也具有较强竞争力。当样本数为 40 时，PM 取得最低值 0.0213，相较 LHS（0.0265）提升 19.62\%，相较 G\_opt（0.0639）提升 66.67\%。当样本数为 100 时，最小 RMSE 降至 0.0004，接近 D\_opt（0.0003），并比 G\_opt（0.0167）优 97.60\%。尽管部分竞争方法在某些样本量下略优于 PM（如 70 和 90），PM 在多数情况下仍保持领先。
+
+\begin{table}[h!]
+	\centering
+	\caption{10 个主动学习样本下 RMSE 的 Q1。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.0665 & 0.0729 & 0.0587 & 0.0490 & 0.0381 \\
+		50 & 0.0468 & 0.0542 & 0.0488 & 0.0522 & 0.0322 \\
+		60 & 0.0425 & 0.0481 & 0.0371 & 0.0390 & 0.0319 \\
+		70 & 0.0380 & 0.0372 & 0.0308 & 0.0298 & 0.0274 \\
+		80 & 0.0308 & 0.0315 & 0.0281 & 0.0263 & 0.0212 \\
+		90 & 0.0253 & 0.0275 & 0.0231 & 0.0231 & 0.0177 \\
+		100 & 0.0210 & 0.0217 & 0.0188 & 0.0211 & 0.0153 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+
+\begin{table}[h!]
+	\centering
+	\caption{10 个主动学习样本下 RMSE 的 Q3。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.1066 & 0.1070 & 0.0908 & 0.0794 & 0.0597 \\
+		50 & 0.0741 & 0.0721 & 0.0686 & 0.0661 & 0.0441 \\
+		60 & 0.0578 & 0.0604 & 0.0538 & 0.0585 & 0.0420 \\
+		70 & 0.0483 & 0.0523 & 0.0442 & 0.0408 & 0.0358 \\
+		80 & 0.0415 & 0.0452 & 0.0363 & 0.0394 & 0.0285 \\
+		90 & 0.0369 & 0.0357 & 0.0314 & 0.0302 & 0.0238 \\
+		100 & 0.0270 & 0.0274 & 0.0268 & 0.0283 & 0.0222 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+为评价稳健性和一致性，进一步分析由表 A3 和表 A4 得到的四分位距（IQR = Q3 $-$ Q1）。较小 IQR 表明分布更集中、更可靠。当样本数为 40 时，PM 的 IQR 最小，为 0.0216（0.0597 $-$ 0.0381），相较 CVT（0.0304）集中度提升 28.95\%，相较 D\_opt（0.0401）提升 46.13\%。当样本数为 100 时，IQR 进一步降至 0.0069（0.0222 $-$ 0.0153），保持较高稳健性。最大稳健性优势出现在 50 个样本时，IQR 为 0.0119，相较 D\_opt（0.0273）提升 56.41\%。
+
+\begin{table}[h!]
+	\centering
+	\caption{20 个主动学习样本下的最大 RMSE。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.3059 & 0.2248 & 0.1732 & 0.1170 & 0.2559 \\
+		50 & 0.1864 & 0.0895 & 0.1043 & 0.1075 & 0.2452 \\
+		60 & 0.1259 & 0.0999 & 0.0664 & 0.0899 & 0.0404 \\
+		70 & 0.0758 & 0.0623 & 0.0574 & 0.0707 & 0.0442 \\
+		80 & 0.0750 & 0.0621 & 0.0617 & 0.0670 & 0.0388 \\
+		90 & 0.0538 & 0.0481 & 0.0468 & 0.0609 & 0.0512 \\
+		100 & 0.0416 & 0.0485 & 0.0462 & 0.0601 & 0.0390 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+如表 A5 所示，PM 方法在所有样本规模下均得到最低最大 RMSE。最显著提升出现在 60 个样本时，PM 相较 D\_opt 将最大 RMSE 降低 67.91\%。即使在 100 个样本下，PM 仍实现 6.25\% 的降低。
+
+\begin{table}[h!]
+	\centering
+	\caption{20 个主动学习样本下的最小 RMSE。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.0614 & 0.0402 & 0.0287 & 0.0559 & 0.0086 \\
+		50 & 0.0336 & 0.0058 & 0.0063 & 0.0364 & 0.0009 \\
+		60 & 0.0048 & 0.0232 & 0.0254 & 0.0039 & 0.0081 \\
+		70 & 0.0067 & 0.0257 & 0.0129 & 0.0309 & 0.0071 \\
+		80 & 0.0003 & 0.0187 & 0.0187 & 0.0044 & 0.0048 \\
+		90 & 0.0147 & 0.0144 & 0.0180 & 0.0189 & 0.0002 \\
+		100 & 0.0147 & 0.0145 & 0.0073 & 0.0205 & 0.0008 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+
+表 A6 表明，当总样本数为 40 时，PM 最小 RMSE 为 0.0086，优于所有替代方法。整体最佳表现出现在 50 个样本时，最小 RMSE 为 0.0009。最大提升出现在 90 个样本时，PM 相较 D\_opt 将最小 RMSE 降低 98.64\%。最小提升出现在 40 个样本时，相较 LHS 仍达到 69.00\%。
+
+\begin{table}[h!]
+	\centering
+	\caption{20 个主动学习样本下 RMSE 的 Q1。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.1081 & 0.0765 & 0.0482 & 0.0741 & 0.0203 \\
+		50 & 0.0701 & 0.0449 & 0.0401 & 0.0635 & 0.0185 \\
+		60 & 0.0337 & 0.0404 & 0.0291 & 0.0505 & 0.0162 \\
+		70 & 0.0341 & 0.0326 & 0.0269 & 0.0431 & 0.0166 \\
+		80 & 0.0261 & 0.0308 & 0.0305 & 0.0369 & 0.0154 \\
+		90 & 0.0240 & 0.0228 & 0.0214 & 0.0340 & 0.0135 \\
+		100 & 0.0232 & 0.0285 & 0.0182 & 0.0266 & 0.0121 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{table}[h!]
+	\centering
+	\caption{20 个主动学习样本下 RMSE 的 Q3。}
+	\begin{tabular}{cccccc}
+		\toprule
+		数量 & D\_opt & G\_opt & LHS & CVT & PM \\
+		\midrule
+		40 & 0.1775 & 0.1003 & 0.0861 & 0.0883 & 0.0584 \\
+		50 & 0.1237 & 0.0599 & 0.0665 & 0.0782 & 0.0297 \\
+		60 & 0.0611 & 0.0553 & 0.0457 & 0.0639 & 0.0242 \\
+		70 & 0.0538 & 0.0463 & 0.0438 & 0.0600 & 0.0270 \\
+		80 & 0.0418 & 0.0514 & 0.0413 & 0.0482 & 0.0302 \\
+		90 & 0.0395 & 0.0346 & 0.0299 & 0.0443 & 0.0230 \\
+		100 & 0.0323 & 0.0358 & 0.0271 & 0.0388 & 0.0193 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+表 A7 和表 A8 进一步确认，PM 在所有样本规模下均保持最小四分位距（IQR = Q3 $-$ Q1），表明其具有更好的稳健性和集中性。最显著提升出现在 50 个样本时，相较 D\_opt 提升 79.10\%。即使在 100 个样本下，PM 相较 G\_opt 仍提升 1.37\%。这些结果说明 PM 在不同样本条件下均保持较高稳定性和可靠性。
+
+\section{ }
+\begin{table}[h!]
+	\centering
+	\caption{60 个训练样本下优化结果比较。}
+	\label{tab:b1_60}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{lcccccccccccc}
+			\toprule
+			\multirow{2}{*}{方法} & \multicolumn{2}{c}{均值} & \multicolumn{2}{c}{中位数} & \multicolumn{2}{c}{最大值} & \multicolumn{2}{c}{最小值} & \multicolumn{2}{c}{Q1} & \multicolumn{2}{c}{Q3} \\
+			\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}
+			& MH & QL & MH & QL & MH & QL & MH & QL & MH & QL & MH & QL \\
+			\midrule
+			PM     & 365.83 & 2930.53 & 371.50 & 3013.73 & 392.00 & 6720.97 & 300.00 & 1018.22 & 350.00 & 2160.40 & 383.00 & 3456.65 \\
+			LHS    & 351.87 & 5784.58 & 353.50 & 5342.49 & 377.00 & 9498.79 & 320.00 & 2690.94 & 347.00 & 4459.98 & 359.00 & 7648.59 \\
+			CVT    & 325.97 & 8622.45 & 339.50 & 7396.28 & 365.00 & 21212.57 & 246.00 &  777.46 & 307.00 & 6151.12 & 353.50 & 10521.37 \\
+			D\_opt & 328.20 & 7570.85 & 340.50 & 6076.41 & 388.00 & 19800.33 & 239.00 & 1474.00 & 301.25 & 4308.73 & 357.50 & 9276.37 \\
+			G\_opt & 334.27 & 7235.88 & 338.00 & 6161.14 & 391.00 & 17281.67 & 251.00 & 1879.86 & 319.00 & 4146.96 & 356.25 & 9606.40 \\
+			\bottomrule
+		\end{tabular}%
+	}
+\end{table}
+
+如表 B1 所示，在 60 个训练样本下，PM 方法始终优于其他方法。相较 LHS，PM 方法将 QL 均值从 5784.58 降至 2930.53，降低 49.34\%；QL 中位数和最小值也分别降低 43.59\% 和 62.16\%。对于 MH 指标，PM 方法的均值、中位数和最大值分别提高 3.97\%、5.09\% 和 3.98\%。相较 CVT，PM 表现更强：QL 均值、中位数和最大值分别降低 66.01\%、59.25\% 和 68.32\%；同时，MH 均值和最小值分别提高 12.23\% 和 21.95\%。相较 D\_opt，PM 将 QL 均值和最大值分别降低 61.29\% 和 66.06\%，并将 MH 均值和中位数分别提高 11.47\% 和 9.10\%。相较 G\_opt，QL 均值、中位数、最大值和最小值分别降低 59.50\%、51.08\%、61.10\% 和 45.84\%，MH 均值和中位数分别提高 9.44\% 和 9.91\%，最小值提高 19.52\%。
+
+\begin{table}[h!]
+	\centering
+	\caption{70 个训练样本下优化结果比较。}
+	\label{tab:b2_70}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{lcccccccccccc}
+			\toprule
+			\multirow{2}{*}{方法} & \multicolumn{2}{c}{均值} & \multicolumn{2}{c}{中位数} & \multicolumn{2}{c}{最大值} & \multicolumn{2}{c}{最小值} & \multicolumn{2}{c}{Q1} & \multicolumn{2}{c}{Q3} \\
+			\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}
+			& MH & QL & MH & QL & MH & QL & MH & QL & MH & QL & MH & QL \\
+			\midrule
+			PM     & 369.53 & 3527.62 & 374.50 & 2863.82 & 392.00 & 8610.52 & 318.00 & 1854.14 & 360.50 & 2516.13 & 380.50 & 4044.50 \\
+			LHS    & 346.00 & 7056.32 & 352.00 & 6489.23 & 384.00 & 19136.57 & 242.00 & 1914.78 & 334.50 & 4823.50 & 362.25 & 8758.49 \\
+			CVT    & 336.07 & 8476.93 & 341.50 & 7220.50 & 385.00 & 26473.52 & 261.00 & 2497.03 & 327.50 & 5729.68 & 351.00 & 9735.58 \\
+			D\_opt & 335.33 & 8640.93 & 338.50 & 7532.22 & 374.00 & 25676.47 & 233.00 & 3308.62 & 323.75 & 4919.09 & 356.25 & 10550.84 \\
+			G\_opt & 334.07 & 7835.69 & 335.00 & 5989.16 & 387.00 & 18779.07 & 275.00 & 2748.34 & 313.75 & 4785.09 & 361.00 & 10509.83 \\
+			\bottomrule
+		\end{tabular}%
+	}
+\end{table}
+
+如表 B2 所示，在 70 个训练样本下，PM 方法在关键指标上持续优于所有其他方法。相较 LHS，PM 将 QL 均值从 7056.32 降至 3527.62，降低 50.00\%；QL 中位数和最大值分别降低 55.88\% 和 55.00\%。同时，MH 均值、中位数和最小值分别提高 6.80\%、6.39\% 和 31.40\%。相较 CVT，PM 将 QL 均值和最大值分别降低 58.38\% 和 67.48\%，MH 均值提高 9.96\%，最小值提高 21.84\%。相较 D\_opt，PM 的 QL 均值降低 59.18\%，最大值降低 66.46\%；同时，MH 均值和最小值分别提高 10.20\% 和 36.48\%。相较 G\_opt，QL 值显著更低，均值和中位数分别降低 54.98\% 和 52.18\%。在 MH 方面，均值提高 10.61\%，中位数提高 11.79\%，最小值提高 15.64\%。
+
+\begin{table}[h!]
+	\centering
+	\caption{80 个训练样本下优化结果比较。}
+	\label{tab:b3_80}
+	\resizebox{\linewidth}{!}{%
+		\begin{tabular}{lcccccccccccc}
+			\toprule
+			\multirow{2}{*}{方法} & \multicolumn{2}{c}{均值} & \multicolumn{2}{c}{中位数} & \multicolumn{2}{c}{最大值} & \multicolumn{2}{c}{最小值} & \multicolumn{2}{c}{Q1} & \multicolumn{2}{c}{Q3} \\
+			\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}
+			& MH & QL & MH & QL & MH & QL & MH & QL & MH & QL & MH & QL \\
+			\midrule
+			PM     & 366.60 & 5597.53 & 372.50 & 4794.50 & 392.00 & 14924.09 & 319.00 & 2131.16 & 356.00 & 3481.38 & 378.00 & 5943.41 \\
+			LHS    & 350.67 & 8907.73 & 356.00 & 8332.60 & 384.00 & 21441.47 & 272.00 & 3271.37 & 343.00 & 6424.00 & 361.00 & 10717.41 \\
+			CVT    & 335.57 & 10070.66 & 336.50 & 9343.45 & 371.00 & 18541.11 & 277.00 & 2641.21 & 323.50 & 7482.70 & 352.00 & 12569.66 \\
+			D\_opt & 319.40 & 12093.48 & 323.00 & 10690.87 & 372.00 & 22646.91 & 252.00 & 3865.38 & 305.00 & 8724.00 & 349.75 & 16243.79 \\
+			G\_opt & 334.57 & 9588.88 & 342.00 & 8141.33 & 389.00 & 21515.31 & 235.00 & 3256.61 & 322.75 & 6710.74 & 359.75 & 12136.71 \\
+			\bottomrule
+		\end{tabular}%
+	}
+\end{table}
+
+如表 B3 所示，在 80 个训练样本下，PM 方法继续优于所有竞争方法。相较 LHS，PM 将 QL 均值从 8907.73 降至 5597.53，降低 37.16\%；QL 中位数也降低 42.46\%。在 MH 方面，均值和中位数分别提高 4.54\% 和 4.63\%，最小值提高 17.28\%。相较 CVT，PM 将 QL 均值和中位数分别降低 44.42\% 和 48.69\%，同时将 MH 均值和最小值分别提高 9.25\% 和 15.16\%。相较 D\_opt，PM 的 QL 均值降低 53.72\%，MH 均值和中位数分别提高 14.78\% 和 15.32\%，最小值提高 26.59\%。相较 G\_opt，PM 的 QL 均值降低 41.62\%，中位数降低 41.11\%；MH 表现也有所改善，均值和中位数分别提高 9.57\% 和 8.92\%，最小值提高 35.74\%。
+
+
+
+
+
+
+
+
+
+
+
+\end{document}

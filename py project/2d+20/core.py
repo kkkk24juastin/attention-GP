@@ -71,9 +71,7 @@ def get_split(shared_data, n_initial, repeat):
     initial = initial[
         (initial["n_initial"] == int(n_initial)) & (initial["repeat"] == int(repeat))
     ]
-    pool = pool[
-        (pool["n_initial"] == int(n_initial)) & (pool["repeat"] == int(repeat))
-    ]
+    pool = pool[pool["repeat"] == int(repeat)]
     initial_x, initial_y = frame_to_xy(initial)
     pool_x, pool_y = frame_to_xy(pool)
     test_x, test_y = frame_to_xy(shared_data["test"])

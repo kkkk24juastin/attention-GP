@@ -157,12 +157,12 @@ def main(methods_to_run=['PM', 'LHS', 'G_opt', 'D_opt', 'K_means']):
     n_pool = 6000
     n_iterations = 20
     n_preselect = 10
-    n_initial_values = range(80, 81, 10)
+    n_initial_values = range(80, 141, 10)
     n_repeats = 30
     excel_filename = '5d+20五种方法结果.xlsx'
     
     # 生成固定的测试集
-    Testx = generate_candidates(1000, lower_bounds, upper_bounds)
+    Testx = generate_candidates(5000, lower_bounds, upper_bounds)
     Testy = non_test_function(Testx)
     
     # 加载进度

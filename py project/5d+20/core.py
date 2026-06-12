@@ -24,16 +24,27 @@ from config import (
 
 NUMPY_CONVERTER = default_converter + numpy2ri.converter
 _TGP_LOADED = False
+FEATURE_COLUMNS = [f"x{i}" for i in range(1, len(LOWER_BOUNDS) + 1)]
 
 
 def non_test_function(X):
-    x, y = X[:, 0], X[:, 1]
-    condition = x > 0
-    return np.where(
-        condition,
-        (2 + 0.5 * y) * np.sin(x) + y**2,
-        x**2 + y**2 + (8 - (x**2 + y**2)) * (1 - np.exp(-x**2)),
+    if X.shape[1] != 5:
+        raise ValueError("X must have 5 columns.")
+
+    x1 = X[:, 0]
+    x2 = X[:, 1]
+    x3 = X[:, 2]
+    x4 = X[:, 3]
+    x5 = X[:, 4]
+    f = (
+        np.sin(np.pi * x1)
+        + np.cos(2 * np.pi * x2)
+        + x3**2
+        + np.exp(-x4)
+        + x5
+        + np.where((x1 + x2) > 1, x3, 0)
     )
+    return 2 * (f - 1)
 
 
 def generate_candidates(n_samples, seed):
@@ -43,7 +54,9 @@ def generate_candidates(n_samples, seed):
 
 
 def points_to_frame(X, y, n_initial=None, repeat=None):
-    frame = pd.DataFrame({"x1": X[:, 0], "x2": X[:, 1], "y": y})
+    data = {column: X[:, idx] for idx, column in enumerate(FEATURE_COLUMNS)}
+    data["y"] = y
+    frame = pd.DataFrame(data)
     if n_initial is not None:
         frame.insert(0, "n_initial", int(n_initial))
     if repeat is not None:
@@ -53,7 +66,7 @@ def points_to_frame(X, y, n_initial=None, repeat=None):
 
 
 def frame_to_xy(frame):
-    X = frame[["x1", "x2"]].to_numpy(dtype=float)
+    X = frame[FEATURE_COLUMNS].to_numpy(dtype=float)
     y = frame["y"].to_numpy(dtype=float)
     return X, y
 
@@ -75,14 +88,7 @@ def get_split(shared_data, n_initial, repeat):
     initial_x, initial_y = frame_to_xy(initial)
     pool_x, pool_y = frame_to_xy(pool)
     test_x, test_y = frame_to_xy(shared_data["test"])
-    return (
-        initial_x,
-        initial_y,
-        pool_x,
-        pool_y,
-        test_x,
-        test_y,
-    )
+    return initial_x, initial_y, pool_x, pool_y, test_x, test_y
 
 
 def ensure_tgp_loaded():

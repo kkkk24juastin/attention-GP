@@ -44,11 +44,21 @@ def write_shared_data():
 
         initial_frames = []
         pool_frames = []
+        for repeat in range(1, REPEATS + 1):
+            seed = repeat_seed(repeat)
+            pool_x = generate_candidates(N_POOL, seed)
+            pool_frame = points_to_frame(
+                pool_x,
+                non_test_function(pool_x),
+                repeat=repeat,
+            )
+            pool_frame.insert(1, "seed", seed)
+            pool_frames.append(pool_frame)
+
         for n_initial in N_INITIAL_VALUES:
             for repeat in range(1, REPEATS + 1):
                 seed = repeat_seed(repeat)
                 initial_x = generate_candidates(n_initial, seed)
-                pool_x = generate_candidates(N_POOL, seed)
                 initial_frames.append(
                     points_to_frame(
                         initial_x,
@@ -58,15 +68,6 @@ def write_shared_data():
                     )
                 )
                 initial_frames[-1].insert(2, "seed", seed)
-                pool_frames.append(
-                    points_to_frame(
-                        pool_x,
-                        non_test_function(pool_x),
-                        n_initial=n_initial,
-                        repeat=repeat,
-                    )
-                )
-                pool_frames[-1].insert(2, "seed", seed)
 
         pd.concat(initial_frames, ignore_index=True).to_excel(
             writer, sheet_name="initial", index=False

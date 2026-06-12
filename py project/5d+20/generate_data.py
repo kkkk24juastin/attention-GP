@@ -2,8 +2,8 @@ import pandas as pd
 
 from config import (
     CASE_NAME,
-    DATA_FILE,
     DATA_DIR,
+    DATA_FILE,
     N_INITIAL_VALUES,
     N_POOL,
     OVERWRITE_DATA,

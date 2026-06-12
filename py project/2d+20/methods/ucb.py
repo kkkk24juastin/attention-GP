@@ -1,15 +1,15 @@
 import numpy as np
 
-from config import N_ADDED, TARGET_VALUE
+from config import N_ADDED
 from core import append_pool_point, tgp_predict
 
 
 METHOD_NAME = "UCB"
 
 
-def _target_ucb_scores(mu, variance, kappa=2.0):
+def _ucb_scores(mu, variance, kappa=2.0):
     std = np.sqrt(np.maximum(variance, 1e-12))
-    return -np.abs(mu - TARGET_VALUE) + kappa * std
+    return mu + kappa * std
 
 
 def run(initial_x, initial_y, pool_x, pool_y, seed=None):
@@ -20,7 +20,7 @@ def run(initial_x, initial_y, pool_x, pool_y, seed=None):
 
     for _ in range(N_ADDED):
         mu, variance = tgp_predict(X_train, y_train, X_pool)
-        selected_idx = int(np.nanargmax(_target_ucb_scores(mu, variance)))
+        selected_idx = int(np.nanargmax(_ucb_scores(mu, variance)))
         X_train, y_train, X_pool, y_pool = append_pool_point(
             X_train, y_train, X_pool, y_pool, selected_idx
         )

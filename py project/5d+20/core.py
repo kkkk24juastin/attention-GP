@@ -18,6 +18,7 @@ from config import (
     SUMMARY_FILE,
     TARGET_BAND,
     TARGET_VALUE,
+    TRAINING_SET_DIR,
     UPPER_BOUNDS,
 )
 
@@ -65,10 +66,64 @@ def points_to_frame(X, y, n_initial=None, repeat=None):
     return frame
 
 
+def training_set_to_frame(X, y, method, n_initial, repeat, seed):
+    frame = points_to_frame(X, y)
+    frame.insert(0, "point_id", np.arange(1, len(frame) + 1))
+    frame.insert(1, "case", CASE_NAME)
+    frame.insert(2, "method", method)
+    frame.insert(3, "n_initial", int(n_initial))
+    frame.insert(4, "n_added", max(0, len(frame) - int(n_initial)))
+    frame.insert(5, "repeat", int(repeat))
+    frame.insert(6, "seed", int(seed))
+    point_source = np.where(frame["point_id"] <= int(n_initial), "initial", "active_learning")
+    frame.insert(7, "point_source", point_source)
+    return frame
+
+
 def frame_to_xy(frame):
     X = frame[FEATURE_COLUMNS].to_numpy(dtype=float)
     y = frame["y"].to_numpy(dtype=float)
     return X, y
+
+
+def training_set_filename(method, n_initial, repeat):
+    return f"{CASE_NAME}_{method}_n{int(n_initial)}_r{int(repeat)}.xlsx"
+
+
+def training_set_path(method, n_initial, repeat):
+    return TRAINING_SET_DIR / training_set_filename(method, n_initial, repeat)
+
+
+def save_training_set(method, n_initial, repeat, seed, X, y):
+    TRAINING_SET_DIR.mkdir(parents=True, exist_ok=True)
+    path = training_set_path(method, n_initial, repeat)
+    frame = training_set_to_frame(X, y, method, n_initial, repeat, seed)
+    frame.to_excel(path, index=False)
+    return {
+        "case": CASE_NAME,
+        "method": method,
+        "n_initial": int(n_initial),
+        "n_added": len(frame) - int(n_initial),
+        "n_total": len(frame),
+        "repeat": int(repeat),
+        "seed": int(seed),
+        "training_set_file": path.name,
+        "training_set_path": str(path),
+    }
+
+
+def save_training_set_index_row(index_file, row):
+    index_path = Path(index_file)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    new_row = pd.DataFrame([row])
+    if index_path.exists():
+        old_rows = pd.read_excel(index_path)
+        data = pd.concat([old_rows, new_row], ignore_index=True)
+        data = data.drop_duplicates(["method", "n_initial", "repeat"], keep="last")
+    else:
+        data = new_row
+    data = data.sort_values(["method", "n_initial", "repeat"])
+    data.to_excel(index_path, index=False)
 
 
 def load_shared_data(data_file=DATA_FILE):

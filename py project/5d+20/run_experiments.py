@@ -19,6 +19,7 @@ from config import (
     RUN_N_INITIAL_VALUES,
     RUN_REPEATS,
     SUMMARY_FILE,
+    TRAINING_SET_INDEX_FILE,
     WORKERS,
 )
 from core import (
@@ -27,6 +28,8 @@ from core import (
     get_split,
     load_shared_data,
     save_result_row,
+    save_training_set,
+    save_training_set_index_row,
     summarize_results,
 )
 from generate_data import main as generate_data
@@ -62,12 +65,15 @@ def run_task(task):
                 initial_x, initial_y, pool_x, pool_y, seed=seed
             )
             rmse_all, rmse_target = evaluate_model(final_x, final_y, test_x, test_y)
+            training_set_row = save_training_set(
+                method, n_initial, repeat, seed, final_x, final_y
+            )
         finally:
             os.chdir(original_cwd)
             robjects.r.assign("tgp_worker_dir", str(original_cwd))
             robjects.r("setwd(tgp_worker_dir)")
 
-    return {
+    row = {
         "case": CASE_NAME,
         "method": method,
         "n_initial": n_initial,
@@ -77,6 +83,13 @@ def run_task(task):
         "RMSE_all": rmse_all,
         "RMSE_target": rmse_target,
     }
+    row.update(
+        {
+            "training_set_file": training_set_row["training_set_file"],
+            "training_set_path": training_set_row["training_set_path"],
+        }
+    )
+    return row, training_set_row
 
 
 def reset_results_if_requested():
@@ -103,12 +116,14 @@ def main():
         futures = {executor.submit(run_task, task): task for task in tasks}
         for future in as_completed(futures):
             method, _, n_initial, repeat, _ = futures[future]
-            row = future.result()
+            row, training_set_row = future.result()
             save_result_row(RESULT_FILE, row)
+            save_training_set_index_row(TRAINING_SET_INDEX_FILE, training_set_row)
             print(
                 f"Saved {CASE_NAME}: method={method}, n_initial={n_initial}, "
                 f"repeat={repeat}/{RUN_REPEATS}, RMSE_all={row['RMSE_all']:.4f}, "
-                f"RMSE_target={row['RMSE_target']:.4f}"
+                f"RMSE_target={row['RMSE_target']:.4f}, "
+                f"training_set={training_set_row['training_set_file']}"
             )
 
     summarize_results(RESULT_FILE, SUMMARY_FILE)

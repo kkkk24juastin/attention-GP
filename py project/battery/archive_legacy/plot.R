@@ -1,0 +1,190 @@
+# --- 加载必要的库 ---
+library(ggplot2)
+library(dplyr)
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+library(RColorBrewer)
+
+# --- 1. 全局字体大小控制 ---
+global_font_size <- 20
+
+# --- 2. 数据加载与准备 (直接从您提供的数据创建数据框) ---
+cat("CAN: 正在直接从您提供的数据创建数据框...\n")
+raw_data <- data.frame(
+  stringsAsFactors = FALSE,
+  method = c("G_opt","G_opt","G_opt","G_opt","G_opt","G_opt","G_opt",
+             "G_opt","G_opt","G_opt","G_opt","G_opt","G_opt","G_opt",
+             "G_opt","G_opt","G_opt","G_opt","G_opt","G_opt","G_opt",
+             "G_opt","G_opt","G_opt","G_opt","G_opt","G_opt","G_opt",
+             "G_opt","G_opt","D_opt","D_opt","D_opt","D_opt","D_opt",
+             "D_opt","D_opt","D_opt","D_opt","D_opt","D_opt","D_opt",
+             "D_opt","D_opt","D_opt","D_opt","D_opt","D_opt","D_opt",
+             "D_opt","D_opt","D_opt","D_opt","D_opt","D_opt","D_opt",
+             "D_opt","D_opt","D_opt","D_opt","CVT","CVT","CVT",
+             "CVT","CVT","CVT","CVT","CVT","CVT","CVT","CVT","CVT",
+             "CVT","CVT","CVT","CVT","CVT","CVT","CVT","CVT",
+             "CVT","CVT","CVT","CVT","CVT","CVT","CVT","CVT","CVT",
+             "CVT","PM","PM","PM","PM","PM","PM","PM","PM","PM",
+             "PM","PM","PM","PM","PM","PM","PM","PM","PM","PM","PM",
+             "LHS","LHS","LHS","LHS","LHS","LHS","LHS","LHS","LHS",
+             "LHS","LHS","LHS","LHS","LHS","LHS","LHS","LHS",
+             "LHS","LHS","LHS"),
+  RMSE_target = c(8.738963342,8.861105906,6.164620366,6.987232814,
+                  18.31436235,5.607969396,6.551156548,6.981042668,
+                  5.810970275,8.179679084,16.2201326,6.225099329,
+                  10.24565788,5.562675134,7.297922263,5.853421787,
+                  6.099648506,6.819801863,6.092957577,6.971577261,
+                  6.973726199,5.386979033,6.676703994,6.093129551,
+                  7.667670054,6.084179709,5.802249162,6.949992805,
+                  5.783752622,5.725791282,6.72943329,6.952566694,
+                  7.05589227,7.417539053,6.769240527,7.392059435,
+                  6.789992268,6.995886789,8.967349939,7.045960551,
+                  6.782527603,5.941990672,6.995336974,7.636211775,
+                  6.111852166,8.358720428,11.97618007,6.815563467,
+                  7.858020031,15.56258739,10.4120228,7.09191813,
+                  10.19814803,6.594127469,13.3596679,9.147938664,
+                  8.74628205,10.68199976,7.518934919,10.32292261,
+                  12.08803647,12.08521529,9.643034642,7.234268093,
+                  20.32638239,6.985634897,7.212601279,11.8704365,
+                  8.736370636,7.235227128,12.73053111,9.69270365,
+                  8.725609164,12.32556592,8.831979355,7.097922461,
+                  26.64135047,6.94910016,11.69070288,7.010747734,
+                  7.644593397,7.285372154,7.194746441,11.08828808,
+                  7.094007051,11.25621228,7.849449358,7.168391556,
+                  6.878069901,8.668850286,6.901772786,7.185092688,
+                  10.49171295,8.00265612,6.109561118,7.013348021,
+                  7.33446269,6.109844133,5.68137318,5.481809284,
+                  7.795725404,10.99252635,6.510242297,5.556092375,
+                  6.830410884,6.111461139,6.60049322,4.860479645,
+                  7.569803905,6.620793235,7.216020969,10.52821124,
+                  12.55825402,9.314445453,7.088173167,6.989244633,
+                  8.984284652,6.527507273,7.443911425,6.424697956,
+                  7.258683398,10.54939529,7.039875085,16.95925978,
+                  12.36406756,16.06429762,6.805993099,7.878635302,
+                  7.498420956,9.956827217)
+)
+cat("CAN: 数据框创建成功。\n")
+
+# --- 数据清洗与预处理 ---
+rmse_column_to_use <- "RMSE_target" 
+
+raw_data <- raw_data %>%
+  filter(!is.na(.data[[rmse_column_to_use]]))
+
+# 定义期望的X轴顺序
+desired_order <- c("D_opt", "G_opt", "LHS", "CVT", "PM")
+cat("CAN: X轴顺序保持为:", paste(desired_order, collapse=", "), "\n")
+
+raw_data$method <- factor(raw_data$method, levels = desired_order)
+method_names <- levels(raw_data$method)
+n_methods <- length(method_names)
+
+# --- 3. 计算摘要统计信息 (用于绘制均值点) ---
+summary_stats <- raw_data %>%
+  group_by(method) %>%
+  summarise(
+    mean_RMSE = mean(.data[[rmse_column_to_use]], na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# --- 4. 【本次修改】: 定义统一的颜色调色板 ---
+# 使用您推荐的颜色
+recommended_colors <- c(
+  "D_opt"   = "#E41A1C", # Red
+  "G_opt"   = "#377EB8", # Blue
+  "CVT"     = "#4DAF4A", # Green
+  "LHS"     = "#984EA3", # Purple
+  "PM"      = "#FF7F00"  # Orange
+)
+
+# 根据 desired_order 排列颜色，确保与X轴顺序一致
+# 这个 `final_colors` 将同时用于散点颜色和箱线图填充
+final_colors <- recommended_colors[desired_order]
+names(final_colors) <- method_names
+cat("CAN: 已采用您推荐的新调色板。\n")
+
+# --- 5. 创建箱线图并叠加散点 ---
+rmse_boxplot_final <- ggplot(raw_data, aes(x = method, y = .data[[rmse_column_to_use]])) +
+  
+  # 使用统一颜色
+  geom_jitter(
+    aes(color = method),
+    width = 0.25,
+    size = 2.0,
+    alpha = 0.9
+  ) +
+  
+  # 使用统一颜色
+  geom_boxplot(
+    aes(fill = method),
+    width = 0.6,
+    lwd = 0.8,
+    alpha = 0.7,
+    outlier.shape = NA
+  ) +
+  
+  # 添加均值点
+  geom_point(
+    data = summary_stats,
+    aes(x=method, y = mean_RMSE),
+    shape = 18, # 菱形
+    size = 4,
+    color = "black"
+  ) +
+  
+  # --- 6. 【本次修改】: 自定义外观以使用统一颜色 ---
+  # 设置箱线图填充颜色
+  scale_fill_manual(
+    values = final_colors
+  ) +
+  
+  # 设置散点颜色
+  scale_color_manual(
+    values = final_colors
+  ) +
+  
+  labs(
+    x = "Method",
+    y = "RMSE"
+  ) +
+  
+  theme_bw(base_size = global_font_size) +
+  
+  theme(
+    plot.title = element_blank(),
+    axis.text = element_text(face = "bold", color = "black"),
+    axis.title.x = element_text(face = "bold", margin = margin(t = 15)),
+    axis.title.y = element_text(
+      face = "bold",
+      angle = 0,
+      vjust = 0.5,
+      margin = margin(r = 15)
+    ),
+    legend.position = "none", # 彻底隐藏图例
+    
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.line = element_line(colour = "black", linewidth = 0.5)
+  )
+
+# --- 7. 显示图表 ---
+if (n_methods > 0) {
+  print(rmse_boxplot_final)
+  cat("CAN: 代码执行完毕。已根据您指定的统一调色板生成最终的RMSE对比箱线图。\n")
+} else {
+  cat("CAN: 警告！没有足够的数据来生成图表。\n")
+}
+ggsave("RMSEbattery.pdf", plot = rmse_boxplot_final, width = 6, height = 5, device = "pdf")
+# --- 8. (可选) 保存图表 ---
+# if (n_methods > 0) {
+#   ggsave(
+#     "RMSE_boxplot_unified_color.png",
+#     plot = rmse_boxplot_final,
+#     width = 8, 
+#     height = 6,
+#     dpi = 300
+#   )
+#   cat("CAN: 图像已保存为 'RMSE_boxplot_unified_color.png'\n")
+# }

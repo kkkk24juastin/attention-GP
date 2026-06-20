@@ -1,0 +1,23 @@
+\begin{table}[htbp]
+\centering
+\caption{Wing-weight summary for all methods.}
+\label{tab:sub_wing_all}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrrrrr}
+\toprule
+ & \multicolumn{2}{r}{RMSE_all} & \multicolumn{2}{r}{RMSE_target} & \multicolumn{2}{r}{best_true_target_error} & \multicolumn{2}{r}{best_true_response} & \multicolumn{2}{r}{ga_true_quality_loss} \\
+ & mean & median & mean & median & mean & median & mean & median & mean & median \\
+method &  &  &  &  &  &  &  &  &  &  \\
+\midrule
+DO & 9.746 & 9.502 & 10.068 & 9.821 & 2.740 & 0.609 & 298.826 & 299.220 & 49.719 & 34.803 \\
+EI & 10.299 & 10.358 & 10.670 & 10.695 & 47.234 & 6.306 & 294.871 & 297.878 & 40.413 & 9.967 \\
+GO & 8.861 & 8.860 & 9.544 & 9.554 & 0.609 & 0.609 & 299.220 & 299.220 & 50.262 & 19.574 \\
+IMSE & 9.969 & 10.052 & 9.403 & 9.390 & 21.062 & 37.796 & 303.030 & 306.148 & 37.378 & 32.810 \\
+CVT & 9.917 & 9.920 & 9.590 & 9.607 & 22.250 & 2.805 & 298.842 & 299.776 & 65.396 & 42.003 \\
+LHS & 9.972 & 9.985 & 9.438 & 9.446 & 37.914 & 14.979 & 295.903 & 296.130 & 43.811 & 30.284 \\
+PM & 10.116 & 9.947 & 8.953 & 8.918 & 128.899 & 102.955 & 292.206 & 289.853 & 17.399 & 6.000 \\
+UCB & 10.118 & 10.106 & 10.539 & 10.538 & 16.530 & 0.609 & 297.681 & 299.220 & 30.990 & 12.475 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}

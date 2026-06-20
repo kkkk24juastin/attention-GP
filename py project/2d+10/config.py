@@ -8,6 +8,8 @@ RESULT_DIR = SCRIPT_DIR / "refactored_results"
 DATA_FILE = DATA_DIR / "shared_data.xlsx"
 RESULT_FILE = RESULT_DIR / "all_methods_results.xlsx"
 SUMMARY_FILE = RESULT_DIR / "summary_statistics.xlsx"
+TRAINING_SET_DIR = RESULT_DIR / "training_sets"
+TRAINING_SET_INDEX_FILE = RESULT_DIR / "training_sets_index.xlsx"
 
 TARGET_VALUE = 1.5
 TARGET_BAND = 0.2

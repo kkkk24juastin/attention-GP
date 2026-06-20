@@ -10,6 +10,8 @@ from config import (
     BODY_LENGTH_SCALE,
     FEATURE_NAMES,
     INNER_DIAMETER_SCALE,
+    NOSE_SHAPE_NAME,
+    NOSE_SHAPE_PARAMETER_COLUMN,
     NOSE_LENGTH_SCALE,
     NOSE_THICKNESS_SCALE,
     OPENROCKET_JAR_FILE,
@@ -18,6 +20,7 @@ from config import (
     OPENROCKET_SIMULATION_INDEX,
     OPENROCKET_TIMEOUT_SECONDS,
     OUTER_DIAMETER_SCALE,
+    nose_shape_parameter_from_length,
 )
 
 
@@ -57,6 +60,7 @@ def design_values_from_row(row, prefix="ga_x"):
 
 def write_design_ork(design_values, output_path):
     x1, x2, x3, x4, x5 = [float(value) for value in design_values]
+    nose_shape_parameter = nose_shape_parameter_from_length(x1)
     nose_length = x1 * NOSE_LENGTH_SCALE
     body_radius = 0.5 * x2 * OUTER_DIAMETER_SCALE
     nose_thickness = x3 * NOSE_THICKNESS_SCALE
@@ -75,6 +79,8 @@ def write_design_ork(design_values, output_path):
 
         _set_text(nose, "length", nose_length)
         _set_text(nose, "thickness", nose_thickness)
+        _first_child(nose, "shape").text = NOSE_SHAPE_NAME
+        _set_text(nose, "shapeparameter", nose_shape_parameter)
         _set_text(nose, "aftradius", body_radius)
         _set_text(nose, "aftshoulderradius", max(body_radius - nose_thickness, 1e-5))
         _set_text(body, "length", body_length)
@@ -151,7 +157,9 @@ def simulate_design(design_values, work_dir):
     work_path.mkdir(parents=True, exist_ok=True)
     ork_path = work_path / "candidate.ork"
     write_design_ork(design_values, ork_path)
-    return run_openrocket(ork_path)
+    result = run_openrocket(ork_path)
+    result[NOSE_SHAPE_PARAMETER_COLUMN] = nose_shape_parameter_from_length(design_values[0])
+    return result
 
 
 def simulate_design_row(row, work_dir, prefix="ga_x"):

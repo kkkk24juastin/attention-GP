@@ -85,7 +85,10 @@ def run_task(task):
 
 
 def main():
-    generate_data()
+    if DATA_FILE.exists():
+        print(f"{CASE_NAME}: use existing shared data at {DATA_FILE}")
+    else:
+        generate_data()
     shared_data = load_shared_data(DATA_FILE)
     tasks = build_tasks(shared_data)
     if not tasks:

@@ -2,11 +2,17 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 
-from config import N_ADDED
+from config import LOWER_BOUNDS, N_ADDED, UPPER_BOUNDS
 from core import append_pool_point
 
 
 METHOD_NAME = "K_means"
+
+
+def _normalize(X):
+    lower = np.asarray(LOWER_BOUNDS, dtype=float)
+    upper = np.asarray(UPPER_BOUNDS, dtype=float)
+    return (np.asarray(X, dtype=float) - lower) / (upper - lower)
 
 
 def run(initial_x, initial_y, pool_x, pool_y, seed=None):
@@ -15,11 +21,11 @@ def run(initial_x, initial_y, pool_x, pool_y, seed=None):
     X_pool = pool_x.copy()
     y_pool = pool_y.copy()
 
+    X_pool_scaled = _normalize(X_pool)
     kmeans = KMeans(n_clusters=N_ADDED, n_init=10, random_state=seed)
-    kmeans.fit(X_pool)
-    centers = kmeans.cluster_centers_
+    kmeans.fit(X_pool_scaled)
+    distances = cdist(kmeans.cluster_centers_, X_pool_scaled)
     selected = []
-    distances = cdist(centers, X_pool)
     for row in distances:
         for idx in np.argsort(row):
             idx = int(idx)

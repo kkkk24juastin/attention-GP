@@ -6,6 +6,7 @@ import pandas as pd
 from config import (
     GA_CANDIDATE_FILE,
     GA_RESULT_FILE,
+    NOSE_SHAPE_PARAMETER_COLUMN,
     OPENROCKET_RESULT_FILE,
     SUMMARY_FILE,
     TARGET_VALUE,
@@ -79,13 +80,24 @@ def build_final_results(candidate_file=GA_CANDIDATE_FILE, simulation_file=OPENRO
     _validate_unique_keys(simulations, key_columns, "OpenRocket 仿真结果")
 
     keep_columns = [column for column in key_columns if column in simulations.columns]
+    if NOSE_SHAPE_PARAMETER_COLUMN in simulations.columns:
+        keep_columns.append(NOSE_SHAPE_PARAMETER_COLUMN)
     keep_columns += [column for column in SIMULATION_COLUMNS if column in simulations.columns]
     simulations = simulations[keep_columns]
     data = candidates.merge(simulations, on=key_columns, how="left", suffixes=("", "_openrocket"))
+    openrocket_shape_column = f"{NOSE_SHAPE_PARAMETER_COLUMN}_openrocket"
+    if openrocket_shape_column in data.columns:
+        if NOSE_SHAPE_PARAMETER_COLUMN not in data.columns:
+            data[NOSE_SHAPE_PARAMETER_COLUMN] = data[openrocket_shape_column]
+        data = data.drop(columns=[openrocket_shape_column])
 
     if "最大飞行高度" not in data.columns:
         data["最大飞行高度"] = np.nan
-    data["QL_value"] = (pd.to_numeric(data["最大飞行高度"], errors="coerce") - TARGET_VALUE) ** 2
+    data["true_target_error"] = (
+        pd.to_numeric(data["最大飞行高度"], errors="coerce") - TARGET_VALUE
+    ) ** 2
+    if "QL_value" not in data.columns:
+        data["QL_value"] = np.nan
     data["openrocket_status"] = np.where(data["最大飞行高度"].notna(), "completed", "pending")
     return data
 

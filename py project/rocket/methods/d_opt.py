@@ -7,9 +7,8 @@ from core import append_pool_point
 METHOD_NAME = "D_opt"
 
 
-def _log_det(design_matrix):
-    sign, logdet = np.linalg.slogdet(design_matrix.T @ design_matrix)
-    return logdet if sign > 0 else -np.inf
+def _det_value(design_matrix):
+    return float(np.linalg.det(design_matrix.T @ design_matrix))
 
 
 def run(initial_x, initial_y, pool_x, pool_y, seed=None):
@@ -24,7 +23,7 @@ def run(initial_x, initial_y, pool_x, pool_y, seed=None):
         selected_idx = 0
         for idx in range(X_pool.shape[0]):
             candidate = np.hstack([1.0, X_pool[idx]]).reshape(1, -1)
-            score = _log_det(np.vstack([current_design, candidate]))
+            score = _det_value(np.vstack([current_design, candidate]))
             if score > best_score:
                 best_score = score
                 selected_idx = idx

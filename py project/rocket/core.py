@@ -16,19 +16,15 @@ from config import (
     DATA_FILE,
     DATASET_DIR,
     FEATURE_NAMES,
-    GA_ELITE_FRACTION,
-    GA_GENERATIONS,
-    GA_MUTATION_RATE,
-    GA_MUTATION_SCALE,
-    GA_POP_SIZE,
-    GA_TOURNAMENT_SIZE,
     LOWER_BOUNDS,
+    NOSE_SHAPE_PARAMETER_COLUMN,
     RAW_FEATURE_COLUMNS,
     RAW_RESPONSE_COLUMN,
     SUMMARY_FILE,
     TARGET_BAND,
     TARGET_VALUE,
     UPPER_BOUNDS,
+    nose_shape_parameter_from_length,
 )
 from openrocket_eval import simulate_design
 
@@ -42,11 +38,23 @@ SUMMARY_METRICS = (
     "best_pred_quality_loss",
     "best_reference_target_error",
     "best_reference_response",
+    "ga_search_quality_loss",
+    "ga_search_mean",
+    "ga_search_variance",
+    "ga_self_pred_quality_loss",
+    "ga_self_pred_mean",
+    "ga_self_pred_variance",
     "ga_pred_quality_loss",
     "ga_pred_mean",
     "ga_pred_variance",
+    "pm_eval_QL",
+    "pm_eval_mean",
+    "pm_eval_variance",
+    "pm_framework_pred_mean",
+    "pm_framework_pred_variance",
     "最大飞行高度",
     "QL_value",
+    "true_target_error",
     "flight_time",
     "time_to_apogee",
     "max_velocity",
@@ -78,6 +86,11 @@ def points_to_frame(X, y=None, n_initial=None, repeat=None):
     if y is not None:
         data["y"] = y
     frame = pd.DataFrame(data)
+    frame.insert(
+        len(FEATURE_NAMES),
+        NOSE_SHAPE_PARAMETER_COLUMN,
+        [nose_shape_parameter_from_length(value) for value in frame["x1"]],
+    )
     if n_initial is not None:
         frame.insert(0, "n_initial", int(n_initial))
     if repeat is not None:
@@ -95,13 +108,17 @@ def training_set_to_frame(X, y, method, n_initial, repeat, seed):
     frame.insert(4, "n_added", max(0, len(frame) - int(n_initial)))
     frame.insert(5, "repeat", int(repeat))
     frame.insert(6, "seed", int(seed))
-    point_source = np.where(frame["point_id"] <= int(n_initial), "initial", "active_learning")
+    if method == "LHS":
+        point_source = np.full(len(frame), "lhs", dtype=object)
+        response_source = np.full(len(frame), "openrocket", dtype=object)
+    else:
+        point_source = np.where(frame["point_id"] <= int(n_initial), "initial", "active_learning")
+        response_source = np.where(
+            frame["point_id"] <= int(n_initial),
+            "openrocket",
+            "openrocket",
+        )
     frame.insert(7, "point_source", point_source)
-    response_source = np.where(
-        frame["point_id"] <= int(n_initial),
-        "rocketdata2.xlsx",
-        "openrocket",
-    )
     frame.insert(8, "response_source", response_source)
     return frame
 
@@ -142,6 +159,20 @@ def ensure_tgp_loaded():
         _TGP_LOADED = True
 
 
+def _prediction_variance_array(raw_variance, expected_size):
+    variance = np.asarray(raw_variance, dtype=float)
+    if variance.ndim == 2 and variance.shape[0] == variance.shape[1]:
+        variance = np.diag(variance)
+    variance = variance.ravel()
+    if variance.size == int(expected_size) ** 2:
+        variance = variance[:: int(expected_size) + 1]
+    if variance.size != int(expected_size):
+        raise ValueError(
+            f"TGP variance size mismatch: expected {int(expected_size)}, got {variance.size}"
+        )
+    return np.maximum(variance, EPS)
+
+
 def tgp_predict(X_train, y_train, X_candidates):
     ensure_tgp_loaded()
     r = robjects.r
@@ -150,10 +181,10 @@ def tgp_predict(X_train, y_train, X_candidates):
         r.assign("y_train", y_train)
         r.assign("X_candidates", X_candidates)
         r("model <- btgp(X_train, y_train, XX = X_candidates, verb = 0)")
-        r("pred <- list(mean = model$ZZ.mean, var = model$ZZ.ks2)")
+        r("pred <- list(mean = model$ZZ.mean, var = model$ZZ.s2)")
         mean = np.asarray(r("pred$mean"), dtype=float).ravel()
-        variance = np.asarray(r("pred$var"), dtype=float).ravel()
-    return mean, np.maximum(variance, EPS)
+        variance = _prediction_variance_array(r("pred$var"), mean.size)
+    return mean, variance
 
 
 def fit_tgp_model(X_train, y_train, model_name="ga_tgp_model"):
@@ -181,8 +212,8 @@ def tgp_model_predict(X_candidates, model_name="ga_tgp_model"):
             ")"
         )
         mean = np.asarray(r("pred$ZZ.mean"), dtype=float).ravel()
-        variance = np.asarray(r("pred$ZZ.ks2"), dtype=float).ravel()
-    return mean, np.maximum(variance, EPS)
+        variance = _prediction_variance_array(r("pred$ZZ.s2"), mean.size)
+    return mean, variance
 
 
 def quality_loss_scores(mu, variance, target_value=TARGET_VALUE):
@@ -249,109 +280,6 @@ def save_training_set(method, n_initial, repeat, seed, X, y):
         "dataset_file": path.name,
         "dataset_path": str(path),
     }
-
-
-def _tournament_select(rng, scores, n_select):
-    tournament = rng.integers(0, len(scores), size=(n_select, GA_TOURNAMENT_SIZE))
-    winners = np.argmin(scores[tournament], axis=1)
-    return tournament[np.arange(n_select), winners]
-
-
-def ga_optimize_surrogate(X_train, y_train, seed=None):
-    rng = np.random.default_rng(seed)
-    model_name = fit_tgp_model(X_train, y_train)
-    lower = np.asarray(LOWER_BOUNDS, dtype=float)
-    upper = np.asarray(UPPER_BOUNDS, dtype=float)
-    span = upper - lower
-    dim = len(lower)
-
-    population = rng.uniform(lower, upper, size=(GA_POP_SIZE, dim))
-    n_inject = min(len(X_train), max(1, GA_POP_SIZE // 10))
-    if n_inject > 0:
-        injected = np.argsort((y_train - TARGET_VALUE) ** 2)[:n_inject]
-        population[:n_inject] = np.clip(X_train[injected], lower, upper)
-
-    elite_count = max(1, int(round(GA_POP_SIZE * GA_ELITE_FRACTION)))
-    best_x = None
-    best_score = np.inf
-    best_mu = np.nan
-    best_var = np.nan
-    best_generation = 0
-
-    for generation in range(1, GA_GENERATIONS + 1):
-        mu, variance = tgp_model_predict(population, model_name=model_name)
-        scores = quality_loss_scores(mu, variance, TARGET_VALUE)
-        generation_best_idx = int(np.nanargmin(scores))
-        if scores[generation_best_idx] < best_score:
-            best_score = float(scores[generation_best_idx])
-            best_x = population[generation_best_idx].copy()
-            best_mu = float(mu[generation_best_idx])
-            best_var = float(variance[generation_best_idx])
-            best_generation = generation
-
-        elite_idx = np.argsort(scores)[:elite_count]
-        elites = population[elite_idx]
-        n_children = GA_POP_SIZE - elite_count
-        parent_idx = _tournament_select(rng, scores, n_children * 2).reshape(n_children, 2)
-        parent_a = population[parent_idx[:, 0]]
-        parent_b = population[parent_idx[:, 1]]
-        alpha = rng.random((n_children, 1))
-        children = alpha * parent_a + (1.0 - alpha) * parent_b
-        mutation_mask = rng.random(children.shape) < GA_MUTATION_RATE
-        mutation = rng.normal(0.0, GA_MUTATION_SCALE * span, size=children.shape)
-        children = np.clip(children + mutation_mask * mutation, lower, upper)
-        population = np.vstack([elites, children])
-
-    mu, variance = tgp_model_predict(population, model_name=model_name)
-    scores = quality_loss_scores(mu, variance, TARGET_VALUE)
-    final_best_idx = int(np.nanargmin(scores))
-    if scores[final_best_idx] < best_score:
-        best_score = float(scores[final_best_idx])
-        best_x = population[final_best_idx].copy()
-        best_mu = float(mu[final_best_idx])
-        best_var = float(variance[final_best_idx])
-        best_generation = GA_GENERATIONS
-
-    result = {
-        "ga_pred_quality_loss": best_score,
-        "ga_pred_mean": best_mu,
-        "ga_pred_variance": best_var,
-        "ga_best_generation": int(best_generation),
-        "openrocket_status": "pending",
-    }
-    for idx, value in enumerate(best_x, start=1):
-        result[f"ga_x{idx}"] = float(value)
-    for raw_name, value in zip(RAW_FEATURE_COLUMNS, best_x):
-        result[raw_name] = float(value)
-    return result
-
-
-def evaluate_surrogate_optimization(X_train, y_train, seed=None, test_x=None, test_y=None):
-    result = {}
-    if test_x is not None and test_y is not None and np.isfinite(test_y).any():
-        pred_y, pred_var = tgp_predict(X_train, y_train, test_x)
-        rmse_all = np.sqrt(np.mean((pred_y - test_y) ** 2))
-        mask = (test_y >= TARGET_VALUE - TARGET_BAND) & (test_y <= TARGET_VALUE + TARGET_BAND)
-        rmse_target = (
-            np.sqrt(np.mean((pred_y[mask] - test_y[mask]) ** 2)) if mask.any() else np.nan
-        )
-
-        quality_loss = quality_loss_scores(pred_y, pred_var, TARGET_VALUE)
-        best_idx = int(np.nanargmin(quality_loss))
-        result.update(
-            {
-                "RMSE_all": rmse_all,
-                "RMSE_target": rmse_target,
-                "best_pred_quality_loss": float(quality_loss[best_idx]),
-                "best_reference_target_error": float((test_y[best_idx] - TARGET_VALUE) ** 2),
-                "best_reference_response": float(test_y[best_idx]),
-            }
-        )
-        for idx, value in enumerate(test_x[best_idx], start=1):
-            result[f"best_x{idx}"] = float(value)
-
-    result.update(ga_optimize_surrogate(X_train, y_train, seed=seed))
-    return result
 
 
 def summarize_results(result_file, summary_file=SUMMARY_FILE):

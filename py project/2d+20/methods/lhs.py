@@ -1,19 +1,12 @@
 from config import N_ADDED
-from core import append_pool_point
+from core import generate_candidates, non_test_function
 
 
 METHOD_NAME = "LHS"
 
 
 def run(initial_x, initial_y, pool_x, pool_y, seed=None):
-    X_train = initial_x.copy()
-    y_train = initial_y.copy()
-    X_pool = pool_x.copy()
-    y_pool = pool_y.copy()
-
-    for _ in range(N_ADDED):
-        X_train, y_train, X_pool, y_pool = append_pool_point(
-            X_train, y_train, X_pool, y_pool, 0
-        )
-
+    sample_seed = 0 if seed is None else seed
+    X_train = generate_candidates(len(initial_x) + N_ADDED, sample_seed)
+    y_train = non_test_function(X_train)
     return X_train, y_train

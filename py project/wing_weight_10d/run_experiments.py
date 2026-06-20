@@ -5,6 +5,7 @@ import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
+import pandas as pd
 import rpy2.robjects as robjects
 
 from config import (
@@ -19,16 +20,27 @@ from config import (
     WORKERS,
 )
 from core import (
-    completed_dataset_keys,
     get_split,
     load_shared_data,
-    save_dataset_index_row,
     save_training_set,
 )
 from generate_data import main as generate_data
 
 
-def build_tasks(done, shared_data):
+DATASET_INDEX_COLUMNS = (
+    "case",
+    "method",
+    "n_initial",
+    "n_added",
+    "n_total",
+    "repeat",
+    "seed",
+    "dataset_file",
+    "dataset_path",
+)
+
+
+def build_tasks(shared_data):
     tasks = []
     for n_initial in RUN_N_INITIAL_VALUES:
         for repeat in range(1, RUN_REPEATS + 1):
@@ -36,10 +48,18 @@ def build_tasks(done, shared_data):
             for method in RUN_METHODS:
                 if method not in METHOD_MODULES:
                     raise ValueError(f"Unknown method in RUN_METHODS: {method}")
-                key = (method, n_initial, repeat)
-                if key not in done:
-                    tasks.append((method, METHOD_MODULES[method], n_initial, repeat, split))
+                tasks.append((method, METHOD_MODULES[method], n_initial, repeat, split))
     return tasks
+
+
+def write_dataset_index(rows):
+    DATASET_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data = pd.DataFrame(rows)
+    if data.empty:
+        data = pd.DataFrame(columns=DATASET_INDEX_COLUMNS)
+    if not data.empty:
+        data = data.sort_values(["method", "n_initial", "repeat"])
+    data.to_excel(DATASET_INDEX_FILE, index=False)
 
 
 def run_task(task):
@@ -69,20 +89,23 @@ def run_task(task):
 def main():
     generate_data()
     shared_data = load_shared_data(DATA_FILE)
-    done = completed_dataset_keys(DATASET_INDEX_FILE)
-    tasks = build_tasks(done, shared_data)
+    tasks = build_tasks(shared_data)
     if not tasks:
-        print(f"{CASE_NAME}: no pending dataset-generation tasks.")
+        print(f"{CASE_NAME}: no dataset-generation tasks.")
+        write_dataset_index([])
         return
 
-    print(f"{CASE_NAME}: generate {len(tasks)} pending training sets with {WORKERS} workers")
+    print(f"{CASE_NAME}: regenerate {len(tasks)} training sets with {WORKERS} workers")
     context = mp.get_context("spawn")
+    rows = []
+    write_dataset_index(rows)
     with ProcessPoolExecutor(max_workers=WORKERS, mp_context=context) as executor:
         futures = {executor.submit(run_task, task): task for task in tasks}
         for future in as_completed(futures):
             method, _, n_initial, repeat, _ = futures[future]
             row = future.result()
-            save_dataset_index_row(DATASET_INDEX_FILE, row)
+            rows.append(row)
+            write_dataset_index(rows)
             print(
                 f"Saved training set {CASE_NAME}: method={method}, "
                 f"n_initial={n_initial}, repeat={repeat}/{RUN_REPEATS}, "

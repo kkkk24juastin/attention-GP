@@ -6,16 +6,18 @@ from config import (
     DATA_FILE,
     FEATURE_NAMES,
     GA_REPEATS,
+    INITIAL_LHS_SEED_START,
     INITIAL_SET_DIR,
     INITIAL_SET_INDEX_FILE,
     N_INITIAL_VALUES,
     N_POOL,
-    RAW_DATA_FILE,
+    NOSE_SHAPE_PARAMETER_COLUMN,
     REPEATS,
     REPEAT_SEED_START,
     TEST_SEED,
 )
-from core import generate_candidates, points_to_frame, raw_frame_to_xy
+from core import generate_candidates, points_to_frame
+from openrocket_eval import simulate_design_matrix
 
 
 def repeat_seed(repeat):
@@ -30,19 +32,30 @@ def initial_set_path(n_initial):
     return INITIAL_SET_DIR / initial_set_filename(n_initial)
 
 
-def write_initial_set_files(full_x, full_y):
+def initial_lhs_seed(n_initial, repeat=1):
+    return INITIAL_LHS_SEED_START + int(n_initial) * 100 + int(repeat) - 1
+
+
+def build_initial_frame(n_initial, repeat):
+    seed = initial_lhs_seed(n_initial, repeat)
+    initial_x = generate_candidates(int(n_initial), seed)
+    work_dir = DATA_DIR / "initial_openrocket" / f"n{int(n_initial)}_r{int(repeat)}"
+    initial_y = simulate_design_matrix(initial_x, work_dir)
+    frame = points_to_frame(initial_x, initial_y, n_initial=n_initial, repeat=repeat)
+    frame.insert(0, "point_id", range(1, len(frame) + 1))
+    frame.insert(1, "case", CASE_NAME)
+    frame.insert(4, "seed", seed)
+    frame.insert(5, "point_source", "initial_lhs")
+    frame.insert(6, "response_source", "openrocket")
+    return frame
+
+
+def write_initial_set_files(initial_by_key):
     INITIAL_SET_DIR.mkdir(parents=True, exist_ok=True)
     index_rows = []
     for n_initial in N_INITIAL_VALUES:
-        seed = repeat_seed(1)
-        initial_x = full_x[: int(n_initial)]
-        initial_y = full_y[: int(n_initial)]
-        frame = points_to_frame(initial_x, initial_y, n_initial=n_initial, repeat=1)
-        frame.insert(0, "point_id", range(1, len(frame) + 1))
-        frame.insert(1, "case", CASE_NAME)
-        frame.insert(4, "seed", seed)
-        frame.insert(5, "point_source", "initial")
-        frame.insert(6, "response_source", "rocketdata2.xlsx")
+        frame = initial_by_key[(int(n_initial), 1)]
+        seed = int(frame["seed"].iloc[0])
 
         path = initial_set_path(n_initial)
         frame.to_excel(path, index=False)
@@ -65,18 +78,25 @@ def write_initial_set_files(full_x, full_y):
 
 
 def write_shared_data():
-    raw = pd.read_excel(RAW_DATA_FILE)
-    full_x, full_y = raw_frame_to_xy(raw)
-    write_initial_set_files(full_x, full_y)
+    initial_by_key = {}
+    for n_initial in N_INITIAL_VALUES:
+        for repeat in range(1, REPEATS + 1):
+            initial_by_key[(int(n_initial), int(repeat))] = build_initial_frame(
+                n_initial, repeat
+            )
+
+    write_initial_set_files(initial_by_key)
     test_x = generate_candidates(N_POOL, TEST_SEED)
     metadata = pd.DataFrame(
         [
             {"key": "case_name", "value": CASE_NAME},
-            {"key": "source_file", "value": RAW_DATA_FILE.name},
-            {"key": "initial_response_source", "value": "rocketdata2.xlsx"},
+            {"key": "initial_design_source", "value": "lhs_independent_by_n_initial"},
+            {"key": "initial_response_source", "value": "openrocket"},
             {"key": "pool_response_source", "value": "openrocket_on_selection"},
             {"key": "test_response_source", "value": "design_only"},
             {"key": "test_seed", "value": TEST_SEED},
+            {"key": "initial_lhs_seed_start", "value": INITIAL_LHS_SEED_START},
+            {"key": "initial_lhs_seed_rule", "value": "seed = initial_lhs_seed_start + n_initial * 100 + repeat - 1"},
             {"key": "repeat_seed_start", "value": REPEAT_SEED_START},
             {"key": "repeat_seed_rule", "value": "seed = repeat_seed_start + repeat - 1"},
             {"key": "n_initial_values", "value": ",".join(map(str, N_INITIAL_VALUES))},
@@ -88,6 +108,7 @@ def write_shared_data():
         ]
     )
     variables = pd.DataFrame({"name": FEATURE_NAMES})
+    variables.loc[len(variables)] = NOSE_SHAPE_PARAMETER_COLUMN
 
     with pd.ExcelWriter(DATA_FILE) as writer:
         metadata.to_excel(writer, sheet_name="metadata", index=False)
@@ -104,18 +125,10 @@ def write_shared_data():
             pool_frames.append(pool_frame)
 
         for n_initial in N_INITIAL_VALUES:
-            initial_x = full_x[: int(n_initial)]
-            initial_y = full_y[: int(n_initial)]
             for repeat in range(1, REPEATS + 1):
-                seed = repeat_seed(repeat)
-                initial_frame = points_to_frame(
-                    initial_x,
-                    initial_y,
-                    n_initial=n_initial,
-                    repeat=repeat,
+                initial_frame = initial_by_key[(int(n_initial), int(repeat))].drop(
+                    columns=["point_id", "case", "point_source"]
                 )
-                initial_frame.insert(2, "seed", seed)
-                initial_frame.insert(3, "response_source", "rocketdata2.xlsx")
                 initial_frames.append(initial_frame)
 
         pd.concat(initial_frames, ignore_index=True).to_excel(

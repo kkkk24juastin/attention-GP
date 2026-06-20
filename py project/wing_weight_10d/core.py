@@ -17,15 +17,8 @@ from config import (
     DATASET_DIR,
     DATASET_INDEX_FILE,
     FEATURE_NAMES,
-    GA_ELITE_FRACTION,
-    GA_GENERATIONS,
-    GA_MUTATION_RATE,
-    GA_MUTATION_SCALE,
-    GA_POP_SIZE,
-    GA_TOURNAMENT_SIZE,
     LOWER_BOUNDS,
     SUMMARY_FILE,
-    TARGET_BAND,
     TARGET_VALUE,
     UPPER_BOUNDS,
 )
@@ -40,12 +33,22 @@ SUMMARY_METRICS = (
     "best_pred_quality_loss",
     "best_true_target_error",
     "best_true_response",
+    "ga_search_quality_loss",
+    "ga_search_mean",
+    "ga_search_variance",
+    "ga_self_pred_quality_loss",
+    "ga_self_pred_mean",
+    "ga_self_pred_variance",
     "ga_pred_quality_loss",
     "ga_true_quality_loss",
     "ga_true_target_error",
     "ga_true_response",
     "ga_pred_mean",
     "ga_pred_variance",
+    "ga_true_quality_loss_with_pred_variance",
+    "pm_eval_QL",
+    "pm_eval_mean",
+    "pm_eval_variance",
 )
 
 
@@ -240,6 +243,20 @@ def ensure_tgp_loaded():
         _TGP_LOADED = True
 
 
+def _prediction_variance_array(raw_variance, expected_size):
+    variance = np.asarray(raw_variance, dtype=float)
+    if variance.ndim == 2 and variance.shape[0] == variance.shape[1]:
+        variance = np.diag(variance)
+    variance = variance.ravel()
+    if variance.size == int(expected_size) ** 2:
+        variance = variance[:: int(expected_size) + 1]
+    if variance.size != int(expected_size):
+        raise ValueError(
+            f"TGP variance size mismatch: expected {int(expected_size)}, got {variance.size}"
+        )
+    return np.maximum(variance, EPS)
+
+
 def tgp_predict(X_train, y_train, X_candidates):
     ensure_tgp_loaded()
     r = robjects.r
@@ -250,114 +267,14 @@ def tgp_predict(X_train, y_train, X_candidates):
         r("model <- btgp(X_train, y_train, XX = X_candidates, verb = 0)")
         r("pred <- list(mean = model$ZZ.mean, var = model$ZZ.s2)")
         mean = np.asarray(r("pred$mean"), dtype=float).ravel()
-        variance = np.asarray(r("pred$var"), dtype=float).ravel()
-    return mean, np.maximum(variance, EPS)
+        variance = _prediction_variance_array(r("pred$var"), mean.size)
+    return mean, variance
 
 
 def quality_loss_scores(mu, variance, target_value=TARGET_VALUE):
     mu = np.asarray(mu, dtype=float).ravel()
     variance = np.maximum(np.asarray(variance, dtype=float).ravel(), EPS)
     return (mu - float(target_value)) ** 2 + variance
-
-
-def _tournament_select(rng, scores, n_select):
-    tournament = rng.integers(0, len(scores), size=(n_select, GA_TOURNAMENT_SIZE))
-    winners = np.argmin(scores[tournament], axis=1)
-    return tournament[np.arange(n_select), winners]
-
-
-def ga_optimize_surrogate(X_train, y_train, seed=None):
-    rng = np.random.default_rng(seed)
-    lower = np.asarray(LOWER_BOUNDS, dtype=float)
-    upper = np.asarray(UPPER_BOUNDS, dtype=float)
-    span = upper - lower
-    dim = len(lower)
-
-    population = rng.uniform(lower, upper, size=(GA_POP_SIZE, dim))
-    n_inject = min(len(X_train), max(1, GA_POP_SIZE // 10))
-    if n_inject > 0:
-        injected = np.argsort((y_train - TARGET_VALUE) ** 2)[:n_inject]
-        population[:n_inject] = np.clip(X_train[injected], lower, upper)
-
-    elite_count = max(1, int(round(GA_POP_SIZE * GA_ELITE_FRACTION)))
-    best_x = None
-    best_score = np.inf
-    best_mu = np.nan
-    best_var = np.nan
-    best_generation = 0
-
-    for generation in range(1, GA_GENERATIONS + 1):
-        mu, variance = tgp_predict(X_train, y_train, population)
-        scores = quality_loss_scores(mu, variance, TARGET_VALUE)
-        generation_best_idx = int(np.nanargmin(scores))
-        if scores[generation_best_idx] < best_score:
-            best_score = float(scores[generation_best_idx])
-            best_x = population[generation_best_idx].copy()
-            best_mu = float(mu[generation_best_idx])
-            best_var = float(variance[generation_best_idx])
-            best_generation = generation
-
-        elite_idx = np.argsort(scores)[:elite_count]
-        elites = population[elite_idx]
-        n_children = GA_POP_SIZE - elite_count
-        parent_idx = _tournament_select(rng, scores, n_children * 2).reshape(n_children, 2)
-        parent_a = population[parent_idx[:, 0]]
-        parent_b = population[parent_idx[:, 1]]
-        alpha = rng.random((n_children, 1))
-        children = alpha * parent_a + (1.0 - alpha) * parent_b
-        mutation_mask = rng.random(children.shape) < GA_MUTATION_RATE
-        mutation = rng.normal(0.0, GA_MUTATION_SCALE * span, size=children.shape)
-        children = np.clip(children + mutation_mask * mutation, lower, upper)
-        population = np.vstack([elites, children])
-
-    mu, variance = tgp_predict(X_train, y_train, population)
-    scores = quality_loss_scores(mu, variance, TARGET_VALUE)
-    final_best_idx = int(np.nanargmin(scores))
-    if scores[final_best_idx] < best_score:
-        best_score = float(scores[final_best_idx])
-        best_x = population[final_best_idx].copy()
-        best_mu = float(mu[final_best_idx])
-        best_var = float(variance[final_best_idx])
-        best_generation = GA_GENERATIONS
-
-    true_response = float(non_test_function(best_x.reshape(1, -1))[0])
-    true_quality_loss = float((true_response - TARGET_VALUE) ** 2)
-    result = {
-        "ga_pred_quality_loss": best_score,
-        "ga_pred_mean": best_mu,
-        "ga_pred_variance": best_var,
-        "ga_true_response": true_response,
-        "ga_true_target_error": true_quality_loss,
-        "ga_true_quality_loss": true_quality_loss,
-        "ga_best_generation": int(best_generation),
-    }
-    for idx, value in enumerate(best_x, start=1):
-        result[f"ga_x{idx}"] = float(value)
-    return result
-
-
-def evaluate_model(X_train, y_train, test_x, test_y, seed=None):
-    pred_y, pred_var = tgp_predict(X_train, y_train, test_x)
-    pred_y = np.asarray(pred_y, dtype=float).ravel()
-    pred_var = np.maximum(np.asarray(pred_var, dtype=float).ravel(), EPS)
-    rmse_all = np.sqrt(np.mean((pred_y - test_y) ** 2))
-    mask = (test_y >= TARGET_VALUE - TARGET_BAND) & (test_y <= TARGET_VALUE + TARGET_BAND)
-    rmse_target = np.sqrt(np.mean((pred_y[mask] - test_y[mask]) ** 2)) if mask.any() else np.nan
-
-    quality_loss = quality_loss_scores(pred_y, pred_var, TARGET_VALUE)
-    best_idx = int(np.nanargmin(quality_loss))
-    best_x = test_x[best_idx]
-    result = {
-        "RMSE_all": rmse_all,
-        "RMSE_target": rmse_target,
-        "best_pred_quality_loss": float(quality_loss[best_idx]),
-        "best_true_target_error": float((test_y[best_idx] - TARGET_VALUE) ** 2),
-        "best_true_response": float(test_y[best_idx]),
-    }
-    for idx, value in enumerate(best_x, start=1):
-        result[f"best_x{idx}"] = float(value)
-    result.update(ga_optimize_surrogate(X_train, y_train, seed=seed))
-    return result
 
 
 def append_pool_point(X_train, y_train, pool_x, pool_y, selected_idx):
@@ -376,8 +293,9 @@ def completed_keys(result_file):
         return set()
     data = pd.read_excel(result_path)
     return {
-        (row.method, int(row.n_initial), int(row.repeat))
+        (row.method, int(row.n_initial), int(row.repeat), int(row.ga_repeat))
         for row in data.itertuples(index=False)
+        if hasattr(row, "ga_repeat") and pd.notna(row.ga_repeat)
     }
 
 
@@ -388,10 +306,18 @@ def save_result_row(result_file, row):
     if result_path.exists():
         old_rows = pd.read_excel(result_path)
         data = pd.concat([old_rows, new_row], ignore_index=True)
-        data = data.drop_duplicates(["method", "n_initial", "repeat"], keep="last")
+        if "ga_repeat" in data.columns:
+            data = data[data["ga_repeat"].notna()].copy()
+        dedupe_keys = ["method", "n_initial", "repeat"]
+        if "ga_repeat" in data.columns:
+            dedupe_keys.append("ga_repeat")
+        data = data.drop_duplicates(dedupe_keys, keep="last")
     else:
         data = new_row
-    data = data.sort_values(["method", "n_initial", "repeat"])
+    sort_keys = ["method", "n_initial", "repeat"]
+    if "ga_repeat" in data.columns:
+        sort_keys.append("ga_repeat")
+    data = data.sort_values(sort_keys)
     data.to_excel(result_path, index=False)
 
 

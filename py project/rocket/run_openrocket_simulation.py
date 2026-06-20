@@ -3,7 +3,14 @@ import tempfile
 import numpy as np
 import pandas as pd
 
-from config import CASE_NAME, FEATURE_NAMES, GA_CANDIDATE_FILE, OPENROCKET_RESULT_FILE
+from config import (
+    CASE_NAME,
+    FEATURE_NAMES,
+    GA_CANDIDATE_FILE,
+    NOSE_SHAPE_PARAMETER_COLUMN,
+    OPENROCKET_RESULT_FILE,
+    nose_shape_parameter_from_length,
+)
 from openrocket_eval import simulate_design_row
 
 
@@ -17,15 +24,46 @@ PASSTHROUGH_COLUMNS = (
     "repeat",
     "seed",
     "ga_repeat",
-    "ga_seed",
     "dataset_file",
+    "dataset_path",
+    "ga_engine",
+    "ga_param_source",
+    "ga_pop_size",
+    "ga_generations",
+    "ga_stall_generations",
+    "ga_search_quality_loss",
+    "ga_search_mean",
+    "ga_search_variance",
+    "ga_self_pred_quality_loss",
+    "ga_self_pred_mean",
+    "ga_self_pred_variance",
+    "pm_framework_dataset_file",
+    "pm_framework_dataset_path",
     "ga_best_generation",
+    "pm_framework_pred_mean",
+    "pm_framework_pred_variance",
+    "QL_value",
+    "pm_eval_QL",
+    "pm_eval_mean",
+    "pm_eval_variance",
+    "pm_eval_seed",
+    "pm_eval_mode",
+    NOSE_SHAPE_PARAMETER_COLUMN,
 )
 RESULT_COLUMNS = (
     *PASSTHROUGH_COLUMNS,
     "ga_pred_quality_loss",
     "ga_pred_mean",
     "ga_pred_variance",
+    "ga_search_quality_loss",
+    "ga_search_mean",
+    "ga_search_variance",
+    "ga_self_pred_quality_loss",
+    "ga_self_pred_mean",
+    "ga_self_pred_variance",
+    "pm_eval_QL",
+    "pm_eval_mean",
+    "pm_eval_variance",
     *(f"ga_x{idx}" for idx in range(1, len(FEATURE_NAMES) + 1)),
     "最大飞行高度",
     "flight_time",
@@ -68,9 +106,13 @@ def main():
                 column in PASSTHROUGH_COLUMNS
                 or column.startswith("ga_x")
                 or column.startswith("ga_pred")
+                or column.startswith("ga_search")
+                or column.startswith("ga_self")
+                or column.startswith("pm_eval")
             )
         }
         result_row.setdefault("case", CASE_NAME)
+        result_row[NOSE_SHAPE_PARAMETER_COLUMN] = nose_shape_parameter_from_length(row["ga_x1"])
         try:
             with tempfile.TemporaryDirectory(prefix="openrocket_rocket_") as tmp_dir:
                 result_row.update(simulate_design_row(row, tmp_dir, prefix="ga_x"))

@@ -12,7 +12,7 @@ from common import (
     configure_publication_style,
     draw_colored_boxplot,
     ensure_dir,
-    latex_table,
+    METRIC_LABELS,
     prettify_method,
     project_root,
     save_figure,
@@ -40,10 +40,9 @@ def build_tables() -> list[str]:
     data = raw()
     row_order = method_order()
     metrics = [
-        "RMSE_all",
         "RMSE_target",
-        "best_true_target_error",
-        "best_true_response",
+        "RMSE_all",
+        "ga_true_response",
         "ga_true_quality_loss",
     ]
     summary = (
@@ -51,25 +50,42 @@ def build_tables() -> list[str]:
         .agg(["mean", "median"])
         .reindex(row_order)
     )
-    summary.index = [prettify_method(m) for m in summary.index]
-    summary.index.name = "method"
-    return [
-        latex_table(
-            summary,
-            "Wing-weight summary for all methods.",
-            "tab:sub_wing_all",
-            float_digits=3,
-        ),
-    ]
-
-
-def _metric_frame(data: pd.DataFrame, metric: str) -> pd.DataFrame:
-    return (
-        data.groupby("method")[metric]
-        .apply(list)
-        .reindex(method_order())
-        .to_frame(name="values")
+    summary = summary.rename(
+        columns={
+            "RMSE_target": "RMSE in the target region",
+            "RMSE_all": "RMSE over the full surface",
+            "ga_true_response": "GA true response",
+            "ga_true_quality_loss": "True quality loss",
+            "mean": "Mean",
+            "median": "Median",
+        }
     )
+    summary.index = [prettify_method(m) for m in summary.index]
+    summary.index.name = "Method"
+    lines = [
+        "\\begin{table}[htbp]",
+        "\\centering",
+        "\\caption{Summary of the 10-dimensional Wing Weight case.}",
+        "\\label{tab:sub_wing_all}",
+        "\\resizebox{\\linewidth}{!}{%",
+        "\\begin{tabular}{lrrrrrrrr}",
+        "\\toprule",
+        " & \\multicolumn{2}{c}{RMSE in the target region} & \\multicolumn{2}{c}{RMSE over the full surface} & \\multicolumn{2}{c}{GA true response} & \\multicolumn{2}{c}{True quality loss} \\\\",
+        "Method & Mean & Median & Mean & Median & Mean & Median & Mean & Median \\\\",
+        "\\midrule",
+    ]
+    for method, row in summary.iterrows():
+        values = " & ".join(f"{float(value):.3f}" for value in row.to_numpy())
+        lines.append(f"{method} & {values} \\\\")
+    lines.extend(
+        [
+            "\\bottomrule",
+            "\\end{tabular}%",
+            "}",
+            "\\end{table}",
+        ]
+    )
+    return ["\n".join(lines) + "\n"]
 
 
 def build_figure() -> None:
@@ -87,16 +103,15 @@ def build_figure() -> None:
         "UCB": "#bab0ab",
     }
     metrics = [
-        ("RMSE_target", "wing_rmse_target.pdf", "Target-region RMSE"),
-        ("best_true_target_error", "wing_true_target_error.pdf", "True target error"),
-        ("ga_true_quality_loss", "wing_true_quality_loss.pdf", "True quality loss"),
+        ("RMSE_target", "wing_rmse_target.pdf"),
+        ("ga_true_quality_loss", "wing_true_quality_loss.pdf"),
+        ("ga_true_response", "wing_true_response.pdf"),
     ]
-    for metric, filename, title in metrics:
-        fig, ax = plt.subplots(figsize=(3.35, 2.65))
+    for metric, filename in metrics:
+        fig, ax = plt.subplots(figsize=(6.0, 5.0))
         grouped = [data.loc[data["method"] == method, metric].dropna().to_numpy() for method in methods]
         draw_colored_boxplot(ax, grouped, [prettify_method(m) for m in methods], [colors[m] for m in methods])
-        ax.set_title(title)
-        style_axes(ax, "Method", metric.replace("_", " "))
+        style_axes(ax, "Method", METRIC_LABELS.get(metric, metric.replace("_", " ")))
         save_figure(fig, CASE_DIR / filename)
         plt.close(fig)
 
@@ -116,21 +131,21 @@ def main() -> None:
             "\\end{figure}\n",
             "\\begin{figure}[htbp]\n"
             "\\centering\n"
-            "\\includegraphics[width=\\linewidth]{wing_true_target_error.pdf}\n"
-            "\\caption{True target error for the wing-weight case.}\n"
-            "\\label{fig:sub_wing_target_error}\n"
-            "\\end{figure}\n",
-            "\\begin{figure}[htbp]\n"
-            "\\centering\n"
             "\\includegraphics[width=\\linewidth]{wing_true_quality_loss.pdf}\n"
             "\\caption{True quality loss for the wing-weight case.}\n"
             "\\label{fig:sub_wing_quality_loss}\n"
             "\\end{figure}\n",
+            "\\begin{figure}[htbp]\n"
+            "\\centering\n"
+            "\\includegraphics[width=\\linewidth]{wing_true_response.pdf}\n"
+            "\\caption{GA true response for the wing-weight case.}\n"
+            "\\label{fig:sub_wing_true_response}\n"
+            "\\end{figure}\n",
         ],
     )
     print(f"saved: {CASE_DIR / 'wing_rmse_target.pdf'}")
-    print(f"saved: {CASE_DIR / 'wing_true_target_error.pdf'}")
     print(f"saved: {CASE_DIR / 'wing_true_quality_loss.pdf'}")
+    print(f"saved: {CASE_DIR / 'wing_true_response.pdf'}")
     print(f"saved: {OUTPUT_TEX}")
     print(f"saved: {OUTPUT_FIG_TEX}")
 

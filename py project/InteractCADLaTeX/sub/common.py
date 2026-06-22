@@ -15,6 +15,14 @@ METHOD_LABELS = {
     "K_means": "CVT",
 }
 
+METRIC_LABELS = {
+    "RMSE_target": "RMSE in the target region",
+    "RMSE_all": "RMSE over the full surface",
+    "best_true_target_error": "Best true target error",
+    "ga_true_response": "GA true response",
+    "ga_true_quality_loss": "True quality loss",
+}
+
 
 def project_root(path: Path) -> Path:
     return path.resolve().parents[3]
@@ -30,17 +38,17 @@ def configure_publication_style() -> None:
         {
             "font.family": "DejaVu Sans",
             "font.style": "normal",
-            "font.size": 8,
-            "axes.titlesize": 8.5,
-            "axes.labelsize": 8,
-            "xtick.labelsize": 7.5,
-            "ytick.labelsize": 7.5,
-            "legend.fontsize": 7.5,
+            "font.size": 14,
+            "axes.titlesize": 15,
+            "axes.labelsize": 14,
+            "xtick.labelsize": 13,
+            "ytick.labelsize": 13,
+            "legend.fontsize": 13,
             "mathtext.default": "regular",
-            "lines.linewidth": 1.4,
-            "lines.markersize": 4.2,
-            "axes.linewidth": 0.8,
-            "grid.linewidth": 0.5,
+            "lines.linewidth": 2.2,
+            "lines.markersize": 7.0,
+            "axes.linewidth": 1.2,
+            "grid.linewidth": 0.7,
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "savefig.bbox": "tight",
@@ -129,14 +137,17 @@ def latex_table(
     label: str,
     float_digits: int = 4,
     table_pos: str = "htbp",
+    index: bool = True,
+    column_format: str | None = None,
 ) -> str:
     table = body.to_latex(
         escape=False,
         multicolumn=True,
         multirow=True,
         float_format=lambda x: float_fmt(x, float_digits),
-        index=True,
+        index=index,
         bold_rows=False,
+        column_format=column_format,
     )
     return (
         f"\\begin{{table}}[{table_pos}]\n"

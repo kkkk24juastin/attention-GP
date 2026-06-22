@@ -12,7 +12,6 @@ from common import (
     configure_publication_style,
     draw_colored_boxplot,
     ensure_dir,
-    latex_table,
     prettify_method,
     project_root,
     save_figure,
@@ -26,6 +25,13 @@ CASE_DIR = Path(__file__).resolve().parent
 RESULT_FILE = ROOT / "battery" / "refactored_results" / "summary_statistics.xlsx"
 OUTPUT_TEX = CASE_DIR / "tables.tex"
 OUTPUT_FIG_TEX = CASE_DIR / "figures.tex"
+
+METRIC_LABELS = {
+    "RMSE_target": "RMSE in the target region",
+    "RMSE_all": "RMSE over the full surface",
+    "SOC_error_le_5pct_ratio": "SOC error <= 5% proportion",
+    "MaxAE_target": "MaxAE in the target region",
+}
 
 
 def raw() -> pd.DataFrame:
@@ -46,15 +52,32 @@ def build_tables() -> list[str]:
         .reindex(row_order)
     )
     summary.index = [prettify_method(m) for m in summary.index]
-    summary.index.name = "method"
-    return [
-        latex_table(
-            summary,
-            "Battery SoC summary for all methods.",
-            "tab:sub_battery_all",
-            float_digits=3,
-        )
+    summary.index.name = "Method"
+
+    lines = [
+        "\\begin{table}[htbp]",
+        "\\centering",
+        "\\caption{Summary of the battery SoC case.}",
+        "\\label{tab:sub_battery_all}",
+        "\\resizebox{\\linewidth}{!}{%",
+        "\\begin{tabular}{lrrrrrrrr}",
+        "\\toprule",
+        " & \\multicolumn{2}{c}{RMSE in the target region} & \\multicolumn{2}{c}{RMSE over the full surface} & \\multicolumn{2}{c}{SOC error $\\le$ 5\\% proportion} & \\multicolumn{2}{c}{MaxAE in the target region} \\\\",
+        "Method & Mean & Median & Mean & Median & Mean & Median & Mean & Median \\\\",
+        "\\midrule",
     ]
+    for method, row in summary.iterrows():
+        values = " & ".join(f"{float(value):.3f}" for value in row.to_numpy())
+        lines.append(f"{method} & {values} \\\\")
+    lines.extend(
+        [
+            "\\bottomrule",
+            "\\end{tabular}%",
+            "}",
+            "\\end{table}",
+        ]
+    )
+    return ["\n".join(lines) + "\n"]
 
 
 def build_figure() -> None:
@@ -72,16 +95,15 @@ def build_figure() -> None:
         "UCB": "#bab0ab",
     }
     metrics = [
-        ("RMSE_target", "battery_rmse_target.pdf", "Target-region RMSE"),
-        ("SOC_error_le_5pct_ratio", "battery_soc_ratio.pdf", "Within-5pct success ratio"),
-        ("MaxAE_target", "battery_maxae_target.pdf", "Target-region max absolute error"),
+        ("RMSE_target", "battery_rmse_target.pdf", METRIC_LABELS["RMSE_target"]),
+        ("SOC_error_le_5pct_ratio", "battery_soc_ratio.pdf", METRIC_LABELS["SOC_error_le_5pct_ratio"]),
+        ("MaxAE_target", "battery_maxae_target.pdf", METRIC_LABELS["MaxAE_target"]),
     ]
-    for metric, filename, title in metrics:
-        fig, ax = plt.subplots(figsize=(3.35, 2.65))
+    for metric, filename, ylabel in metrics:
+        fig, ax = plt.subplots(figsize=(6.0, 5.0))
         grouped = [data.loc[data["method"] == method, metric].dropna().to_numpy() for method in methods]
         draw_colored_boxplot(ax, grouped, [prettify_method(m) for m in methods], [colors[m] for m in methods])
-        ax.set_title(title)
-        style_axes(ax, "Method", metric.replace("_", " "))
+        style_axes(ax, "Method", ylabel)
         save_figure(fig, CASE_DIR / filename)
         plt.close(fig)
 
@@ -102,7 +124,7 @@ def main() -> None:
             "\\begin{figure}[htbp]\n"
             "\\centering\n"
             "\\includegraphics[width=\\linewidth]{battery_soc_ratio.pdf}\n"
-            "\\caption{Within-5pct success ratio for the battery SoC case.}\n"
+            "\\caption{SOC error within 5\\% proportion for the battery SoC case.}\n"
             "\\label{fig:sub_battery_ratio}\n"
             "\\end{figure}\n",
             "\\begin{figure}[htbp]\n"
